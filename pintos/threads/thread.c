@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* 특정 트리거 까지 멈추는 스레드를 담기 위한 list */
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -91,7 +94,8 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
    thread_create().
 
    It is not safe to call thread_current() until this function
-   finishes. */
+   finishes. 
+   pintos 운영체제에서 커널 스레딩 시스템을 초기화 할때 사용하는 함수로, os main함수에서 최초 한번 동작 */
 void
 thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
@@ -108,6 +112,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -245,6 +250,68 @@ thread_unblock (struct thread *t) {
 	intr_set_level (old_level);
 }
 
+/* list_insert_ordered 함수에서 사용하기 위한 함수
+	list_insert_ordered 함수는 정렬하기 위한 기준으로
+	True, False를 출력하는 함수 포인터를 매개변수로 요구하기 때문에
+	awake_ticks를 낮은 순으로 정렬하기 위한 함수 */
+static bool
+prior_tick (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct thread *a = list_entry (a_, struct thread, elem);
+  const struct thread *b = list_entry (b_, struct thread, elem);
+  
+  return a->awake_ticks < b->awake_ticks;
+}
+
+/* 현재 스레드를 sleep 하는 함수
+	이 함수를 사용하는 순간의 스레드를 sleep_list에 넣는다
+	(이미 running 상태여서 ready_list에서 pop 되었기 떄문에 따로 list_remove는 필요없음) */
+void
+thread_sleep (int64_t alarm_ticks)
+{
+	enum intr_level old_level;
+	struct thread *current_thread;
+
+	old_level = intr_disable ();
+
+	current_thread = thread_current ();
+	ASSERT(current_thread->status == THREAD_RUNNING);
+	current_thread->awake_ticks = alarm_ticks;
+	list_insert_ordered (&sleep_list, &current_thread->elem, prior_tick, NULL);
+	thread_block ();
+
+	intr_set_level (old_level);
+}
+
+/* 자고있는 스레드들을 깨우는 함수
+	매개변수로 현재 tick을 받으며, sleep_list의 가장 앞의 스레드의
+	awake_ticks과 비교하여 현재 tick이 넘어갈 경우 해당 스레드를 unblock 한다 */
+void
+thread_wakeup (int64_t current_ticks)
+{
+	struct thread *current_thread;
+	enum intr_level old_level;
+
+	if (!list_empty (&sleep_list)) {
+		old_level = intr_disable ();
+
+		for (struct list_elem *elem = list_begin(&sleep_list); elem != list_end(&sleep_list); elem = list_begin(&sleep_list)) {
+			current_thread = list_entry(elem, struct thread, elem);
+
+			if (current_thread->awake_ticks <= current_ticks) {
+				list_remove(elem);
+				thread_unblock(current_thread);
+			}
+			else {
+				break;
+			}
+		}
+
+		intr_set_level (old_level);
+	}
+}
+
 /* Returns the name of the running thread. */
 const char *
 thread_name (void) {
@@ -293,7 +360,8 @@ thread_exit (void) {
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
-   may be scheduled again immediately at the scheduler's whim. */
+   may be scheduled again immediately at the scheduler's whim. 
+   현재 스레드를 read 상태로 만든 뒤 ready_list에 넣고 스케쥴링 동작하는 함수 */
 void
 thread_yield (void) {
 	struct thread *curr = thread_current ();
@@ -415,7 +483,8 @@ init_thread (struct thread *t, const char *name, int priority) {
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
    will be in the run queue.)  If the run queue is empty, return
-   idle_thread. */
+   idle_thread. 
+   ready_list에서 다음 실행할 스레드를 선택해서 반환, 만약 리스트에 아무것도 없을 경우 idle_thread를 반환  */
 static struct thread *
 next_thread_to_run (void) {
 	if (list_empty (&ready_list))
@@ -524,7 +593,8 @@ thread_launch (struct thread *th) {
 /* Schedules a new process. At entry, interrupts must be off.
  * This function modify current thread's status to status and then
  * finds another thread to run and switches to it.
- * It's not safe to call printf() in the schedule(). */
+ * It's not safe to call printf() in the schedule().
+ * 현재 실행중인 스레드를 해당 status로 바꾸고 다음에 실행할 스레드를 선택하여 스케줄링 하는 함수  */
 static void
 do_schedule(int status) {
 	ASSERT (intr_get_level () == INTR_OFF);

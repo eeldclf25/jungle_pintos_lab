@@ -1,6 +1,11 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudio,visualstudiocode,windows,macos,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudio,visualstudiocode,windows,macos,linux
 
+### other ###
+.test_status
+select_test.sh
+.vscode
+
 ### Linux ###
 *~
 
