@@ -82,6 +82,30 @@ static tid_t allocate_tid (void);
 // setup temporal gdt first.
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
+/* list_insert_ordered 함수에서 사용하기 위한 함수
+	priority를 높은 순으로 삽입하기 위한 함수 */
+static bool
+prior_priority (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct thread *a = list_entry (a_, struct thread, elem);
+  const struct thread *b = list_entry (b_, struct thread, elem);
+  
+  return a->priority > b->priority;
+}
+
+/* list_insert_ordered 함수에서 사용하기 위한 함수
+	awake_ticks를 낮은 순으로 삽입하기 위한 함수 */
+static bool
+prior_tick (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct thread *a = list_entry (a_, struct thread, elem);
+  const struct thread *b = list_entry (b_, struct thread, elem);
+  
+  return a->awake_ticks < b->awake_ticks;
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -211,6 +235,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	thread_maybe_yield();	// 나보다 우선순위가 큰 스레드가 생성될 수 있으니까 체크
 
 	return tid;
 }
@@ -245,23 +270,9 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered (&ready_list, &t->elem, prior_priority, NULL);	// 삽입도 priority 순위에 맞게 삽입
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
-}
-
-/* list_insert_ordered 함수에서 사용하기 위한 함수
-	list_insert_ordered 함수는 정렬하기 위한 기준으로
-	True, False를 출력하는 함수 포인터를 매개변수로 요구하기 때문에
-	awake_ticks를 낮은 순으로 정렬하기 위한 함수 */
-static bool
-prior_tick (const struct list_elem *a_, const struct list_elem *b_,
-            void *aux UNUSED) 
-{
-  const struct thread *a = list_entry (a_, struct thread, elem);
-  const struct thread *b = list_entry (b_, struct thread, elem);
-  
-  return a->awake_ticks < b->awake_ticks;
 }
 
 /* 현재 스레드를 sleep 하는 함수
@@ -371,8 +382,19 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered (&ready_list, &curr->elem, prior_priority, NULL);	// 삽입도 priority 순위에 맞게 삽입
 	do_schedule (THREAD_READY);
+	intr_set_level (old_level);
+}
+
+/* 현재 스레드가 ready_list의 앞의 스레드와 비교하고 스위칭 하는 함수  */
+void
+thread_maybe_yield (void) {
+	enum intr_level old_level = intr_disable ();
+
+	if (!list_empty (&ready_list) && thread_current ()->priority < list_entry (list_front (&ready_list), struct thread, elem)->priority)
+		thread_yield ();
+
 	intr_set_level (old_level);
 }
 
@@ -380,6 +402,7 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	thread_maybe_yield();	// 세팅된 priority가 낮은 순위일 수 있으니까 체크
 }
 
 /* Returns the current thread's priority. */
