@@ -90,11 +90,10 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+	int64_t wakeup = timer_ticks() + ticks;
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	thread_sleep(wakeup);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -125,7 +124,16 @@ timer_print_stats (void) {
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
-	thread_tick ();
+	thread_tick(); //update the cpu usage for running process
+
+	/* code to add:
+		check sleep list and the global tick.
+		find any threads to wake up,
+		move them to the ready list if necessary.
+		update the global tick. 
+		*/
+
+	thread_wakeup(ticks); // sleep_list에서 깨울 스레드를 확인한다 
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

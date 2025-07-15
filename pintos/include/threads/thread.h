@@ -92,6 +92,9 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	/* Alarm Clock */
+	int64_t wakeup_tick;
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -129,6 +132,12 @@ void thread_unblock (struct thread *);
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
+void thread_sleep(int64_t ticks);
+void thread_wakeup(int64_t current_tick);
+
+bool cmp_priority(const struct list_elem *a,
+                  const struct list_elem *b,
+                  void *aux);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);

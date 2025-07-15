@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Pintos Debug",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/pintos/threads/build/kernel.o",
+      "cwd": "${workspaceFolder}/pintos/threads",
+      "miDebuggerPath": "/usr/bin/gdb", 
+      "miDebuggerServerAddress": "localhost:1234",
+      // "preLaunchTask": "Debug Pintos Test"
+    }
+  ]
+}
