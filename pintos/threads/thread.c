@@ -28,6 +28,10 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* Alarm Clock 
+List of threads that are in BLOCKED state.*/
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -63,7 +67,7 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
-/* Returns true if T appears to point to a valid thread. */
+/* Returns true if T appears to point to a valid thresd. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
 /* Returns the running thread.
@@ -108,6 +112,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -207,6 +212,10 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	if (thread_current()->priority < t->priority)
+    thread_yield();
+
+
 	return tid;
 }
 
@@ -240,7 +249,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -303,7 +312,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -587,4 +596,72 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+bool cmp_priority(const struct list_elem *a,
+                     const struct list_elem *b,
+                     void *aux UNUSED) {
+	const struct thread *ta = list_entry(a, struct thread, elem);
+    const struct thread *tb = list_entry(b, struct thread, elem);
+	/* a가 b보다 더 빨리 깨어나야 한다면 true를 반환한다.*/
+    return ta->priority > tb->priority;						
+}
+
+bool cmp_wakeup_tick(const struct list_elem *a,
+                     const struct list_elem *b,
+                     void *aux UNUSED) {
+    const struct thread *ta = list_entry(a, struct thread, elem);
+    const struct thread *tb = list_entry(b, struct thread, elem);
+	/* a가 b보다 더 빨리 깨어나야 한다면 true를 반환한다.*/
+    return ta->wakeup_tick < tb->wakeup_tick;
+}
+
+
+void thread_sleep(int64_t wakeup_tick) {
+	/* if the current thread is not ideal thread,
+		change the state of the caller thread to BLOCKED,
+		store the local tick to wake up,
+		update the global tick if necessary,
+		and call schedule() */
+
+	/* When you manipulate thread list, disable interrupt!*/
+
+	// 다른 스레드가 접근하지 못하게 sleep_list를 비활성화 시킨다.
+	enum intr_level old_level = intr_disable(); // 다른 인터럽트가 발생하면 sleep_list에 넣는 중에 다른 스레드를 호출 할 수 있음. 
+	struct thread *cur = thread_current();
+
+	/* idle_thread는 sleep 상태가 될 수 없음*/
+	if (cur != idle_thread) {
+		cur -> wakeup_tick = wakeup_tick;
+		list_insert_ordered(&sleep_list, &cur-> elem, cmp_wakeup_tick, NULL);
+		/* 현재 스레드를 BLOCKED 상태로 전환한다*/
+		thread_block();
+	}
+	/* 이전 인터럽트 상태로 복원시킨다.*/
+	intr_set_level(old_level); 
+}
+
+void thread_wakeup(int64_t current_tick) {
+	/* 비어있는지 확인하기*/
+	//remove 하고 insert하기
+	enum intr_level old_level = intr_disable();
+	
+	/* list_begin는 반복문에 용이하다 -> 비어있으면 바로 종료가 된다.*/
+	struct list_elem *cur = list_begin(&sleep_list);
+
+	while (cur != list_end(&sleep_list)) {
+		struct thread *t = list_entry(cur, struct thread,elem);
+
+		/* 스레드의 로컬틱이 지금 틱보다 작다면 뺀다.*/
+		if(t -> wakeup_tick <= current_tick) {
+			/* cur은 다음의 요소로*/
+			cur = list_remove(cur);
+			/* THREAD_READY로 바꾼다*/
+			thread_unblock(t);
+		} else {
+		/* wakeup_tick 보다 thread의 틱이 크다면 그냥 종료한다.*/
+			break;
+		}
+	}
+	intr_set_level(old_level);
 }
