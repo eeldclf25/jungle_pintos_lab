@@ -28,7 +28,8 @@
 /* Round up to nearest page boundary. */
 #define pg_round_up(va) ((void *) (((uint64_t) (va) + PGSIZE - 1) & ~PGMASK))
 
-/* Round down to nearest page boundary. */
+/* Round down to nearest page boundary. 
+주어진 가상 주소(va)를 가장 가까운(작은 쪽) 페이지 경계로 내림(round down)하는 역할*/
 #define pg_round_down(va) (void *) ((uint64_t) (va) & ~PGMASK)
 
 /* Kernel virtual address start */

@@ -91,9 +91,11 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int64_t wakeup_tick; //기본 int 크기보다 커질 수 있기 때문에 
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -142,5 +144,8 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+void thread_sleep(int64_t);
+void thread_wakeup(int64_t);
 
 #endif /* threads/thread.h */
