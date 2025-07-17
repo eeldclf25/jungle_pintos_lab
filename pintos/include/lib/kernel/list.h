@@ -99,7 +99,10 @@ struct list {
    the structure that LIST_ELEM is embedded inside.  Supply the
    name of the outer structure STRUCT and the member name MEMBER
    of the list element.  See the big comment at the top of the
-   file for an example. */
+   file for an example. 
+   리스트 안에서 꺼낸 list_elem 포인터 하나만 보고 그 요소가 포함된
+   원래 구조체 포인터를 찾을 수 있다.
+   */
 #define list_entry(LIST_ELEM, STRUCT, MEMBER)           \
 	((STRUCT *) ((uint8_t *) &(LIST_ELEM)->next     \
 		- offsetof (STRUCT, MEMBER.next)))

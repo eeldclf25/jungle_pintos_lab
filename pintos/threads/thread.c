@@ -214,7 +214,9 @@ tid_t thread_create(const char *name, int priority,
 	/* 만약 현재 실행 중인 스레드보다 더 높은 순위의 스레드를 생성 했다면,
 		현재 스레드와 교환한다. */
 	if (thread_current()->priority < t->priority)
+	{
 		thread_yield();
+	}
 
 	return tid;
 }
@@ -304,8 +306,8 @@ void thread_exit(void)
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
-   may be scheduled again immediately at the scheduler's whim. 
-   현재 스레드를 ready 상태로 만들고 스케쥴러에게 CPU를 넘긴다. 
+   may be scheduled again immediately at the scheduler's whim.
+   현재 스레드를 ready 상태로 만들고 스케쥴러에게 CPU를 넘긴다.
    */
 
 void thread_yield(void)
@@ -317,22 +319,39 @@ void thread_yield(void)
 
 	old_level = intr_disable();
 
-	/* idle 스레드를 제외하고, 
+	/* idle 스레드를 제외하고,
 		현재 스레드를 ready_list에 cmp_priority를 사용해 정렬 삽입 한다. */
 	if (curr != idle_thread)
 		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 
-	/* 현재 스레드의 상태를 ready로 바꾸고 스케줄러 호출. 
+	/* 현재 스레드의 상태를 ready로 바꾸고 스케줄러 호출.
 		스케줄러는 ready_list에서 가장 우선순위기 높은 스레드를 선택하여 실행한다.*/
 	do_schedule(THREAD_READY);
 
-	intr_set_level(old_level); 
+	intr_set_level(old_level);
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's priority to NEW_PRIORITY.
+	실행중인 스레드의 우선순위를 new_prority로 변경한다.
+	만약에 ready_list에 더 높은 순위를 가진 thread가 있다면
+	현재 스레드는 yield한다.
+*/
 void thread_set_priority(int new_priority)
 {
-	thread_current()->priority = new_priority;
+	struct thread *cur = thread_current();
+	cur->priority = new_priority;
+	// thread_current()->priority = new_priority;
+
+	if (!list_empty(&ready_list))
+	{
+		struct thread *front = list_entry(list_front(&ready_list), struct thread, elem);
+
+		/* 만약 ready_list의 가장 높은 우선순위 스레드가 현재 스레드보다 높다면 해당 스레드를 실행한다.*/
+		if (cur->priority < front->priority)
+		{
+			thread_yield();
+		}
+	}
 }
 
 /* Returns the current thread's priority. */
