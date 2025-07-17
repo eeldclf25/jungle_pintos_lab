@@ -70,7 +70,8 @@ timer_calibrate (void) {
 	printf ("%'"PRIu64" loops/s.\n", (uint64_t) loops_per_tick * TIMER_FREQ);
 }
 
-/* Returns the number of timer ticks since the OS booted. */
+/* Returns the number of timer ticks since the OS booted. 
+	timer가 지금까지 몇 번 울렸는지를 인터럽트를 잠시 disable 하고 읽은 다음 다시 전 인터럽트 값으로 복구하는 함수 */
 int64_t
 timer_ticks (void) {
 	enum intr_level old_level = intr_disable ();
@@ -81,20 +82,21 @@ timer_ticks (void) {
 }
 
 /* Returns the number of timer ticks elapsed since THEN, which
-   should be a value once returned by timer_ticks(). */
+   should be a value once returned by timer_ticks(). 
+   then 이후 얼마나 많은 특이 경과했는지 출력 */
 int64_t
 timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
-/* Suspends execution for approximately TICKS timer ticks. */
+/* Suspends execution for approximately TICKS timer ticks. 
+	ticks 만큼 현재 스레드를 sleep 하는 함수 */
 void
 timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	thread_sleep (start + ticks);	// 계속 반복해서 busy waiting 하기 떄문에 변경
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -120,12 +122,13 @@ void
 timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	thread_wakeup (ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
