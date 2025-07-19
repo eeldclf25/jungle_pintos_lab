@@ -27,7 +27,8 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
-/* General process initializer for initd and other process. */
+/* General process initializer for initd and other process. 
+initd 및 기타 프로세스를 위한 일반 프로세스 초기화 함수입니다.*/
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
@@ -38,6 +39,10 @@ process_init (void) {
  * before process_create_initd() returns. Returns the initd's
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
+/* FILE_NAME에서 "initd"라는 첫 번째 사용자 프로그램을 시작합니다.
+ * 새 스레드는 process_create_initd()가 반환되기 전에 스케줄링(또는 종료)될 수 있습니다.
+ * initd의 스레드 id를 반환하며, 스레드를 생성할 수 없으면 TID_ERROR를 반환합니다.
+ * 반드시 한 번만 호출해야 합니다. */
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
@@ -58,6 +63,8 @@ process_create_initd (const char *file_name) {
 }
 
 /* A thread function that launches first user process. */
+/* 첫 번째 사용자 프로세스를 실행하는 스레드 함수입니다. */
+
 static void
 initd (void *f_name) {
 #ifdef VM
@@ -73,6 +80,8 @@ initd (void *f_name) {
 
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
+/* 현재 프로세스를 `name`으로 복제합니다. 새 프로세스의 스레드 id를 반환하며,
+ * 스레드를 생성할 수 없으면 TID_ERROR를 반환합니다. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
@@ -83,6 +92,8 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 #ifndef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */
+/* 이 함수를 pml4_for_each에 전달하여 부모의 주소 공간을 복제합니다.
+ * 이 코드는 project 2에서만 사용됩니다. */
 static bool
 duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	struct thread *current = thread_current ();
@@ -92,21 +103,32 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
+	/* 1. TODO: parent_page가 커널 페이지라면 즉시 반환합니다. */
 
 	/* 2. Resolve VA from the parent's page map level 4. */
+	/* 2. 부모의 pml4에서 VA를 해석합니다. */
+
 	parent_page = pml4_get_page (parent->pml4, va);
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
+	/* 3. TODO: 자식 프로세스를 위해 PAL_USER 페이지를 새로 할당하고, 결과를 NEWPAGE에 저장합니다. */
+
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	/* 4. TODO: 부모의 페이지를 새 페이지에 복제하고,
+ *    TODO: 부모의 페이지가 쓰기 가능한지 확인하여 WRITABLE 값을 설정합니다. */
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
+	/* 5. WRITABLE 권한으로 자식의 페이지 테이블에 VA 주소에 새 페이지를 추가합니다. */
+
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		/* 6. TODO: 페이지 삽입에 실패하면 에러 처리를 합니다. */
+
 	}
 	return true;
 }
@@ -116,6 +138,10 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  * Hint) parent->tf does not hold the userland context of the process.
  *       That is, you are required to pass second argument of process_fork to
  *       this function. */
+/* 부모의 실행 컨텍스트를 복사하는 스레드 함수입니다.
+ * 힌트) parent->tf는 프로세스의 사용자 영역 컨텍스트를 가지고 있지 않습니다.
+ *       즉, process_fork의 두 번째 인자를 이 함수에 전달해야 합니다. */
+
 static void
 __do_fork (void *aux) {
 	struct intr_frame if_;
@@ -198,12 +224,27 @@ process_exec (void *f_name) {
  * immediately, without waiting.
  *
  * This function will be implemented in problem 2-2.  For now, it
- * does nothing. */
+ * does nothing. 
+ * 
+ * 스레드 TID가 종료될 때까지 기다렸다가, 그 종료 상태(exit status)를 반환합니다.
+만약 그 스레드가 커널에 의해 종료되었으면(예: 예외 때문에 강제 종료된 경우), -1을 반환합니다.
+TID가 유효하지 않거나, 호출한 프로세스의 자식이 아니거나, 
+해당 TID에 대해 process_wait()가 이미 성공적으로 호출된 적이 있다면, 
+기다리지 않고 즉시 -1을 반환합니다.
+이 함수는 문제 2-2에서 구현될 예정입니다. 
+현재는 아무 동작도 하지 않습니다.*/
 int
 process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+
+	 /* XXX: 힌트) PintOS는 process_wait(initd)가 호출되면 종료됩니다.
+	 * XXX: process_wait를 구현하기 전에 이 부분에 무한 루프를 추가하는 것을 권장합니다. */
+
+	 while(true){
+
+	 }
 	return -1;
 }
 
@@ -630,8 +671,11 @@ setup_stack (struct intr_frame *if_) {
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
+	스택의 바닥(stack_bottom)에 스택을 매핑하고, 즉시 해당 페이지를 할당(claim)하세요.
 	 * TODO: If success, set the rsp accordingly.
-	 * TODO: You should mark the page is stack. */
+	 성공했다면, rsp 레지스터를 그에 맞게 설정하세요
+	 * TODO: You should mark the page is stack. 
+	 해당 페이지를 스택으로 표시*/
 	/* TODO: Your code goes here */
 
 	return success;
