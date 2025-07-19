@@ -49,6 +49,18 @@ sema_init (struct semaphore *sema, unsigned value) {
 	list_init (&sema->waiters);
 }
 
+/* list_insert_ordered 함수에서 사용하기 위한 함수
+	priority를 높은 순으로 삽입하기 위한 함수 */
+static bool
+prior_priority (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct thread *a = list_entry (a_, struct thread, elem);
+  const struct thread *b = list_entry (b_, struct thread, elem);
+  
+  return a->priority > b->priority;
+}
+
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
 
@@ -66,7 +78,7 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		list_insert_ordered (&sema->waiters, &thread_current ()->elem, prior_priority, NULL);
 		thread_block ();
 	}
 	sema->value--;
@@ -112,7 +124,8 @@ sema_up (struct semaphore *sema) {
 	if (!list_empty (&sema->waiters))
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
-	sema->value++;
+   sema->value++;
+   thread_maybe_yield();
 	intr_set_level (old_level);
 }
 
@@ -238,6 +251,7 @@ lock_held_by_current_thread (const struct lock *lock) {
 
 /* One semaphore in a list. */
 struct semaphore_elem {
+   int priority;  // condition 안의 waiters에도 우선순위를 위해 저장하는 변수
 	struct list_elem elem;              /* List element. */
 	struct semaphore semaphore;         /* This semaphore. */
 };
@@ -250,6 +264,18 @@ cond_init (struct condition *cond) {
 	ASSERT (cond != NULL);
 
 	list_init (&cond->waiters);
+}
+
+/* list_insert_ordered 함수에서 사용하기 위한 함수
+	semaphore_elem 구조체의 priority를 높은 순으로 삽입하기 위한 함수 */
+static bool
+prior_waiter (const struct list_elem *a_, const struct list_elem *b_,
+            void *aux UNUSED) 
+{
+  const struct semaphore_elem *a = list_entry (a_, struct semaphore_elem, elem);
+  const struct semaphore_elem *b = list_entry (b_, struct semaphore_elem, elem);
+  
+  return a->priority > b->priority;
 }
 
 /* Atomically releases LOCK and waits for COND to be signaled by
@@ -282,7 +308,8 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_push_back (&cond->waiters, &waiter.elem);
+   waiter.priority = thread_current ()->priority;  // waiter에도 우선순위를 추가하여 insert_ordered를 가능하게
+   list_insert_ordered (&cond->waiters, &waiter.elem, prior_waiter, NULL);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
