@@ -1,10 +1,10 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudio,visualstudiocode,windows,macos,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudio,visualstudiocode,windows,macos,linux
 
-### other ###
+
+
+# custom
 .test_status
-select_test.sh
-.vscode
 
 ### Linux ###
 *~
@@ -56,10 +56,12 @@ Temporary Items
 
 ### VisualStudioCode ###
 .vscode/*
-!.vscode/settings.json
+# !.vscode/settings.json
+!.vscode/c_cpp_properties.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+!.vscode/c_cpp_properties.json
 !.vscode/*.code-snippets
 
 # Local History for Visual Studio Code
