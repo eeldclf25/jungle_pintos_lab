@@ -18,6 +18,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "devices/timer.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -242,9 +243,8 @@ process_wait (tid_t child_tid UNUSED) {
 	 /* XXX: 힌트) PintOS는 process_wait(initd)가 호출되면 종료됩니다.
 	 * XXX: process_wait를 구현하기 전에 이 부분에 무한 루프를 추가하는 것을 권장합니다. */
 
-	 while(true){
-
-	 }
+	//  while(true){}
+	timer_sleep(400);
 	return -1;
 }
 
