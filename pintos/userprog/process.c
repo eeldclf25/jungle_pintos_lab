@@ -42,10 +42,6 @@ tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
 	tid_t tid;
-	char *save_ptr;
-
-	char *parse_filename = strtok_r(file_name, " ", &save_ptr);
-	printf(parse_filename);
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
@@ -53,6 +49,16 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+
+	/* 프로젝트 2 - 파싱(Parsing)*/
+	char *argv[64]; //8의 배수로 지정했음 
+	int argc = 0;
+	char *token, *save_ptr;
+
+	for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL;
+    token = strtok_r(NULL, " ", &save_ptr)) {
+    	argv[argc++] = token;
+	}
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
