@@ -56,6 +56,16 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	/* 프로젝트 2 - 파싱(Parsing)*/
+	char *argv[64]; //8의 배수로 지정했음 
+	int argc = 0;
+	char *token, *save_ptr;
+
+	for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL;
+    token = strtok_r(NULL, " ", &save_ptr)) {
+    	argv[argc++] = token;
+	}
+
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
