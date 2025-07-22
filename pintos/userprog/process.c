@@ -452,7 +452,7 @@ load (const char *file_name, struct intr_frame *if_) {
 								read_bytes, zero_bytes, writable))
 						goto done;
 				}
-				elses
+				else
 					goto done;
 				break;
 		}
