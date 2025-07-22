@@ -361,7 +361,7 @@ struct ELF64_PHDR {
 #define ELF ELF64_hdr
 #define Phdr ELF64_PHDR
 
-static bool setup_stack (struct intr_frame *if_);
+static bool setup_stack (struct intr_frame *if_, char **argv, int argc);
 static bool validate_segment (const struct Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes,
@@ -587,19 +587,75 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Create a minimal stack by mapping a zeroed page at the USER_STACK */
 static bool
-setup_stack (struct intr_frame *if_) {
-	uint8_t *kpage;
+setup_stack (struct intr_frame *if_, char **argv, int argc) {
 	bool success = false;
+	uint8_t *rsp;
 
-	kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-	if (kpage != NULL) {
-		success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
-		if (success)
-			if_->rsp = USER_STACK;
-		else
-			palloc_free_page (kpage);
+	/* 1. palloc으로 유저의 물리 페이지 할당 */
+	uint8_t *kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+	if (kpage == NULL) return false;
+	
+
+	/* 2 .페이지 매핑: USER_STACK에서 아래로 push하며 쓸 공간이 필요하기때문에 아래 4KB를 실제 메모리와 연결한다. */
+	success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
+	if (!success) {
+		palloc_free_page (kpage);
+		return false;
 	}
-	return success;
+	
+	/* 3. rsp 셋업 */
+	rsp = (uint8_t *) USER_STACK;
+
+	/* 4. 문자열을 역순으로 푸시 할 수 있게 문자열을 초기화 한다 */
+	char *arg_addr[64];  // 각 문자열의 주소 저장
+	for (int i = argc - 1; i >= 0; i--) {
+		int arg_len = strlen(argv[i]) + 1;
+		rsp -= arg_len;
+
+		memcpy(rsp, argv[i], arg_len);
+
+		arg_addr[i] = (char *) rsp;
+	}
+
+	/* 5. word-align 푸시 */
+	while ((uintptr_t)rsp % 8 != 0) {
+		rsp--;
+		*(uint64_t *)rsp = 0;
+	}
+
+	/* 6. argv[argc] 를 스택에 푸시 (rsp를 이용한다) */
+	/* NULL sentinel 먼저 푸시 */
+	rsp -= sizeof(uint64_t);
+	*(uint64_t *)rsp = 0;
+
+	/* 역순으로 argv 포인터들 표시 */
+	for (int i = argc - 1; i >= 0; i--) {
+		rsp -= sizeof(uint64_t);
+		*(uint64_t *)rsp = (uint64_t)arg_addr[i];
+	}
+	char **argv_addr = (char **)rsp;
+
+	/*argv_addr 푸시*/
+	rsp -= sizeof(uint64_t);
+	*(uint64_t *)rsp = (uint64_t)argv_addr;
+
+	/* argc 푸시*/
+	rsp -= sizeof(uint64_t);
+	*(uint64_t *)rsp = (uint64_t)argc;
+
+	/* 7. 레지스터 저장 (????) */ 
+	for (int i = 0; i < argc; i ++) {
+		rsp -= sizeof(uint64_t);		//???????????
+	}
+
+	/* 8.fake return address 푸시*/
+	rsp -= sizeof(uint64_t);
+	*(uint64_t *)rsp = 0;
+
+	/* 9. intr_frame 반영 */
+
+} 
+
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
