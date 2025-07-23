@@ -44,3 +44,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	printf ("system call!\n");
 	thread_exit ();
 }
+
+/* power_off()를 호출하며 PintOS를 종료시킨다.
+	유저 프로그램에서 OS를 멈출 수 있는 유일한 시스템 콜 이다. */
+void halt (void) {
+	power_off(); 
+}
