@@ -56,8 +56,14 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	/* 첫번째 인자가 파일 이름이니까 이것만 복사 */
+	char first_word[16];
+	size_t first_len = strcspn(fn_copy, " ");
+	strlcpy(first_word, fn_copy, first_len + 1);
+	first_word[first_len] = '\0';
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (first_word, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -370,12 +376,6 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
-	/* 첫번째 인자가 파일 이름이니까 이것만 복사 */
-	char first_word[128];
-	size_t first_len = strcspn(file_name, " ");
-	strlcpy(first_word, file_name, first_len + 1);
-	first_word[first_len] = '\0';
-
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -383,9 +383,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
-	file = filesys_open (first_word);
+	file = filesys_open (thread_name ());
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", first_word);
+		printf ("load: %s: open failed\n", thread_name ());
 		goto done;
 	}
 
@@ -397,7 +397,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", first_word);
+		printf ("load: %s: error loading executable\n", thread_name ());
 		goto done;
 	}
 

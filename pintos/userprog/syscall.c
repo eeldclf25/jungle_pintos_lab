@@ -50,12 +50,67 @@ check_address (void *addr) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	switch (f->R.rax)
+	{
+		case SYS_HALT:
+			break;
+		case SYS_EXIT:
+			exit (f->R.rdi);
+			break;
+		case SYS_FORK:
+			break;
+		case SYS_EXEC:
+			break;
+		case SYS_WAIT:
+			break;
+		case SYS_CREATE:
+			break;
+		case SYS_REMOVE:
+			break;
+		case SYS_OPEN:
+			break;
+		case SYS_FILESIZE:
+			break;
+		case SYS_READ:
+			break;
+		case SYS_WRITE:
+			f->R.rax = write (f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		case SYS_SEEK:
+			break;
+		case SYS_TELL:
+			break;
+		case SYS_CLOSE:
+			break;
+		default:
+			printf ("system call!\n");
+			thread_exit ();
+			break;
+	}
+
 }
 
 /* power_off()를 호출하며 PintOS를 종료시킨다.
 	유저 프로그램에서 OS를 멈출 수 있는 유일한 시스템 콜 이다. */
 void halt (void) {
 	power_off(); 
+
+/* exit로 호출한 스레드를 종료하는 함수 */
+void
+exit (int status) {
+	printf("%s: exit(%d)\n", thread_name (), status);
+	thread_exit ();
 }
+
+/* 해당 fd에 write 하는 함수
+	아직 fd 구조를 안만들었지만, 일단 출력만 가능하게 구현. 이후 추가적인 구현 필요 */
+int
+write (int fd, const void *buffer, unsigned length) {
+	// 포인터 체크 필요
+	if (fd == 1) {
+		putbuf (buffer, length);
+		return length;
+	}
+	else {
+		// fd 구현 후 작업
+	}

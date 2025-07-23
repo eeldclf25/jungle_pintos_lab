@@ -11,7 +11,8 @@
             ],
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "c11",
-            "intelliSenseMode": "linux-gcc-x64"
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerArgs": ["-nostdinc"]
         }
     ],
     "version": 4
