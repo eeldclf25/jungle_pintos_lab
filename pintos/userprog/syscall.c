@@ -41,6 +41,60 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
+	switch (f->R.rax)
+	{
+		case SYS_HALT:
+			break;
+		case SYS_EXIT:
+			exit (f->R.rdi);
+			break;
+		case SYS_FORK:
+			break;
+		case SYS_EXEC:
+			break;
+		case SYS_WAIT:
+			break;
+		case SYS_CREATE:
+			break;
+		case SYS_REMOVE:
+			break;
+		case SYS_OPEN:
+			break;
+		case SYS_FILESIZE:
+			break;
+		case SYS_READ:
+			break;
+		case SYS_WRITE:
+			f->R.rax = write (f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		case SYS_SEEK:
+			break;
+		case SYS_TELL:
+			break;
+		case SYS_CLOSE:
+			break;
+		default:
+			printf ("system call!\n");
+			thread_exit ();
+			break;
+	}
+
+}
+
+void
+exit (int status) {
+	printf("%s: exit(%d)\n", thread_name (), status);
 	thread_exit ();
+}
+
+int
+write (int fd, const void *buffer, unsigned length) {
+	// 포인터 체크 함수 복붙
+	if (fd == 1) {
+		putbuf (buffer, length);
+		return length;
+	}
+	else {
+		// fd 구현 후에 가능할듯
+	}
 }
