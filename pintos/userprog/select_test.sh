@@ -207,7 +207,7 @@ failed=()
 fi
     else
       # interactive debug 모드: QEMU 포그라운드 실행 + tee 로 .output 캡처 후 .result 생성
-      cmd="pintos -v -k -T 60 -m 20 --gdb --fs-disk=10 -p ${dir}/${test}:${test} -- ${kernel_args:+${kernel_args}} run '${test}${run_args:+ ${run_args}}'"
+      cmd="pintos -v -k -m 20 --gdb --fs-disk=10 -p ${dir}/${test}:${test} -- ${kernel_args:+${kernel_args}} run '${test}${run_args:+ ${run_args}}'"
       echo "사용할 커맨드 : ${cmd}"
       echo -e "=== Debugging \e[33m${test}\e[0m ($(( count + 1 ))/${total}) ==="
       echo -e "\e[33mVSCode의 \"Pintos Debug\" 디버그를 시작하세요.\e[0m"

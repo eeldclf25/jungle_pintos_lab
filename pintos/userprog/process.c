@@ -56,16 +56,6 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
-	/* 프로젝트 2 - 파싱(Parsing)*/
-	char *argv[64]; //8의 배수로 지정했음 
-	int argc = 0;
-	char *token, *save_ptr;
-
-	for (token = strtok_r(fn_copy, " ", &save_ptr); token != NULL;
-    token = strtok_r(NULL, " ", &save_ptr)) {
-    	argv[argc++] = token;
-	}
-
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -361,7 +351,7 @@ struct ELF64_PHDR {
 #define ELF ELF64_hdr
 #define Phdr ELF64_PHDR
 
-static bool setup_stack (struct intr_frame *if_, char **argv, int argc);
+static bool setup_stack (struct intr_frame *if_);
 static bool validate_segment (const struct Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes,
@@ -380,6 +370,12 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
+	/* 첫번째 인자가 파일 이름이니까 이것만 복사 */
+	char first_word[128];
+	size_t first_len = strcspn(file_name, " ");
+	strlcpy(first_word, file_name, first_len + 1);
+	first_word[first_len] = '\0';
+
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
 	if (t->pml4 == NULL)
@@ -387,9 +383,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
-	file = filesys_open (file_name);
+	file = filesys_open (first_word);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", file_name);
+		printf ("load: %s: open failed\n", first_word);
 		goto done;
 	}
 
@@ -401,7 +397,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", file_name);
+		printf ("load: %s: error loading executable\n", first_word);
 		goto done;
 	}
 
@@ -465,8 +461,41 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	/* 들어온 file_name 파싱 */
+	char *token, *save, *cmd_str[64];
+	int count = 0;
+	token = strtok_r(file_name, " ", &save);
+	do {
+		cmd_str[count++] = token;
+		token = strtok_r(NULL, " ", &save);
+	} while (token != NULL);
+
+	/* 스택의 rsp부터 차근차근 반대로 삽입 */
+	char *cmd_ptr[64];
+	for (int i = count - 1; i >= 0; --i) {
+		if_->rsp = ((char*)if_->rsp - (strlen(cmd_str[i]) + 1));
+		memcpy(if_->rsp, cmd_str[i], (strlen(cmd_str[i]) + 1));
+		cmd_ptr[i] = if_->rsp;
+	}
+
+	/* 인자 문자열을 넣은 후 패딩 */
+	uintptr_t padding = if_->rsp % 8;
+	if_->rsp = ((char*)if_->rsp - (padding + 8));	// 패딩 뿐만 아니라 문자열 주소의 끝을 나타내는 NULL을 위해서 8 추가
+	memset (if_->rsp, 0, (padding + 8));
+
+	/* 인자 문자열의 주소를 삽입 */
+	for (int i = count - 1; i >= 0; --i) {
+		if_->rsp = ((char*)if_->rsp - (8));
+		memcpy(if_->rsp, &cmd_ptr[i], (8));
+	}
+
+	/* 가짜 return address 삽입 */
+	if_->rsp = ((char*)if_->rsp - (8));
+	memset (if_->rsp, 0, (8));
+
+	/* rdi, rsi 레지스터 삽입 */
+	if_->R.rdi = count;
+	if_->R.rsi = (char *)if_->rsp + (8);
 
 	success = true;
 
@@ -587,75 +616,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Create a minimal stack by mapping a zeroed page at the USER_STACK */
 static bool
-setup_stack (struct intr_frame *if_, char **argv, int argc) {
+setup_stack (struct intr_frame *if_) {
+	uint8_t *kpage;
 	bool success = false;
-	uint8_t *rsp;
 
-	/* 1. palloc으로 유저의 물리 페이지 할당 */
-	uint8_t *kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-	if (kpage == NULL) return false;
-	
-
-	/* 2 .페이지 매핑: USER_STACK에서 아래로 push하며 쓸 공간이 필요하기때문에 아래 4KB를 실제 메모리와 연결한다. */
-	success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
-	if (!success) {
-		palloc_free_page (kpage);
-		return false;
+	kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+	if (kpage != NULL) {
+		success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
+		if (success)
+			if_->rsp = USER_STACK;
+		else
+			palloc_free_page (kpage);
 	}
-	
-	/* 3. rsp 셋업 */
-	rsp = (uint8_t *) USER_STACK;
-
-	/* 4. 문자열을 역순으로 푸시 할 수 있게 문자열을 초기화 한다 */
-	char *arg_addr[64];  // 각 문자열의 주소 저장
-	for (int i = argc - 1; i >= 0; i--) {
-		int arg_len = strlen(argv[i]) + 1;
-		rsp -= arg_len;
-
-		memcpy(rsp, argv[i], arg_len);
-
-		arg_addr[i] = (char *) rsp;
-	}
-
-	/* 5. word-align 푸시 */
-	while ((uintptr_t)rsp % 8 != 0) {
-		rsp--;
-		*(uint64_t *)rsp = 0;
-	}
-
-	/* 6. argv[argc] 를 스택에 푸시 (rsp를 이용한다) */
-	/* NULL sentinel 먼저 푸시 */
-	rsp -= sizeof(uint64_t);
-	*(uint64_t *)rsp = 0;
-
-	/* 역순으로 argv 포인터들 표시 */
-	for (int i = argc - 1; i >= 0; i--) {
-		rsp -= sizeof(uint64_t);
-		*(uint64_t *)rsp = (uint64_t)arg_addr[i];
-	}
-	char **argv_addr = (char **)rsp;
-
-	/*argv_addr 푸시*/
-	rsp -= sizeof(uint64_t);
-	*(uint64_t *)rsp = (uint64_t)argv_addr;
-
-	/* argc 푸시*/
-	rsp -= sizeof(uint64_t);
-	*(uint64_t *)rsp = (uint64_t)argc;
-
-	/* 7. 레지스터 저장 (????) */ 
-	for (int i = 0; i < argc; i ++) {
-		rsp -= sizeof(uint64_t);		//???????????
-	}
-
-	/* 8.fake return address 푸시*/
-	rsp -= sizeof(uint64_t);
-	*(uint64_t *)rsp = 0;
-
-	/* 9. intr_frame 반영 */
-
-} 
-
+	return success;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
