@@ -127,3 +127,27 @@ sys_create (const char *file, unsigned initial_size) {
 	check_address (file);
 	return filesys_create (file, initial_size);
 }
+
+
+
+int
+sys_open(const char *name){
+
+	//열린 파일을 디스크립터 테이블과 파일 테이블에 등록해야 함
+
+	//1. 테이블을 순회하여 사용 가능한 빈 항목을 찾음
+
+	//2. filesys_open 호출
+	struct file *file = filesys_open(name);
+	
+	//예외 처리
+	check_address(file);
+
+	//3. 파일 디스크립터 테이블 빈 곳에 저장
+
+	//4. 사용 가능한 파일 디스크립터를 찾음
+
+	//5. fd struct 생성 및 fd table에 삽입 -> ?
+	//새로 만들었으니까 만들어주라는 건가(?)
+
+}
