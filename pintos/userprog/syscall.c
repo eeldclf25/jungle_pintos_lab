@@ -7,6 +7,9 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "userprog/process.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -111,13 +114,18 @@ sys_exit (int status) {
 int
 sys_write (int fd, const void *buffer, unsigned length) {
 	check_address (buffer);
-	if (fd == 1) {
+	struct thread *current = thread_current ();
+
+	if (current->fd_table->fd_node[fd].type == FD_STDOUT) {
 		putbuf (buffer, length);
 		return length;
 	}
+	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
+		return file_write (current->fd_table->fd_node[fd].file, buffer, length);
+	}
 	else {
-		// write 스켈레톤
-		return file_write (thread_current ()->fd->fd_address[fd], buffer, length);
+		// file도 아닌 경우는 뭘 반환해야지?
+		sys_exit (-1);
 	}
 }
 
