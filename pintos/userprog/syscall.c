@@ -73,6 +73,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_REMOVE:
 			break;
 		case SYS_OPEN:
+			sys_open(f->R.rdi);
 			break;
 		case SYS_FILESIZE:
 			break;
@@ -140,23 +141,6 @@ sys_create (const char *file, unsigned initial_size) {
 
 int
 sys_open(const char *name){
-
-	//열린 파일을 디스크립터 테이블과 파일 테이블에 등록해야 함
-
-	//1. 테이블을 순회하여 사용 가능한 빈 항목을 찾음
-
-	//2. filesys_open 호출
-	//struct file *file = filesys_open(name);
-	
-	
-
-	//3. 파일 디스크립터 테이블 빈 곳에 저장
-
-	//4. 사용 가능한 파일 디스크립터를 찾음
-
-	//5. fd struct 생성 및 fd table에 삽입 -> ?
-	//새로 만들었으니까 만들어주라는 건가(?)
-
 	//1. filename이 NULL이거나 사용자 메모리 범위(0x8048000 ~ 0xC0000000) 밖인지 확인 - 유효하지 않으면 exit(-1)
 	//예외 처리
 	check_address(name);
@@ -173,10 +157,36 @@ sys_open(const char *name){
 	}
 
    	//4. running_file과 동일하면 file_deny_write 호출
-	
+	//포인터 값이 아니라 inode로 비교하는 이유는
+	//filesys_open() 같은 함수는 같은 파일을 여러 번 열면 다른 file 포인터를 줘도 같은 inode를 공유
+	if (thread_current()->running_file != NULL &&
+    file_get_inode(thread_current()->running_file) == file_get_inode(file)) {
+    file_deny_write(file);
+	}
+
+
     //5. fd_table->fd_next에서 fd 할당 (2 <= fd < 63) - 없으면 file_close 후 return -1
-    //6. fd_node[fd].type = FD_FILE, fd_node[fd].file = file
-    //7. fd_table->fd_next 증가
-    //8. return fd
+    int fd = -1;
+	for (int i = thread_current()->fd_table->fd_next; i < FDCOUNT_LIMIT; i++){
+		if (thread_current()->fd_table->fd_node[i].type == FD_NONE){
+			fd = i;
+			break;
+		}
+	}
+
+	if (fd == -1){
+		file_close(file);
+		return -1;
+	}
+
+	//6. fd_node[fd].type = FD_FILE, fd_node[fd].file = file
+	thread_current()->fd_table->fd_node[fd].type = FD_FILE;
+	thread_current()->fd_table->fd_node[fd].file = file;
+	
+	//7. fd_table->fd_next 증가
+    thread_current()->fd_table->fd_next = fd + 1;
+	
+	//8. return fd
+	return fd;
 
 }
