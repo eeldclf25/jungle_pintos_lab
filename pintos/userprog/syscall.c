@@ -122,5 +122,5 @@ write (int fd, const void *buffer, unsigned length) {
 bool 
 create(const char *file, unsigned initial_size) {
 	check_address(file);
-	filesys(file, initial_size);
+	filesys_create(file, initial_size);
 }
