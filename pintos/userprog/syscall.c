@@ -139,18 +139,19 @@ sys_create (const char *file, unsigned initial_size) {
  * @param fd 
  * @param buffer
  * @param size
- * @return size
+ * @returns bytes
  */
 int 
 sys_read(int fd, void *buffer, unsigned size) {
 	
 	check_address(buffer);
+
 	int bytes = 0;
 	char *next = buffer;
 	struct file *current_file = thread_current() -> fd -> fd_address[fd];
 
-	/* 예외 처리 : 버퍼가 비어있는 경우, 파일이 비어있는 경우, fd가 1인 경우 (stdout)*/
-	if (buffer == NULL | current_file == NULL | fd == 1) {
+	/* 예외 처리 : 파일이 비어있는 경우, fd가 1인 경우 (stdout)*/
+	if (current_file == NULL || fd == 1) {
 		return -1;
 	} 
 
@@ -167,8 +168,8 @@ sys_read(int fd, void *buffer, unsigned size) {
 		}
 	} else {
 		lock_acquire(&filesys_lock);
-		size = file_read(fd, buffer, size);
+		bytes = file_read(current_file, buffer, size);
 		lock_release(&filesys_lock);
 	}
-	return size;
+	return bytes;
 }
