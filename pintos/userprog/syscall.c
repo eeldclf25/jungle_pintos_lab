@@ -65,6 +65,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_WAIT:
 			break;
 		case SYS_CREATE:
+			create(f-> R.rdi, f -> R.rsi);
 			break;
 		case SYS_REMOVE:
 			break;
@@ -116,3 +117,11 @@ write (int fd, const void *buffer, unsigned length) {
 	else {
 		// fd 구현 후 작업
 	}
+}
+
+/* filesys_create를 호출하며 새로운 파일을 만듭니다. */
+bool 
+create(const char *file, unsigned initial_size) {
+	check_address(file);
+	filesys_create(file, initial_size);
+}
