@@ -146,10 +146,9 @@ sys_open(const char *name){
 	//1. 테이블을 순회하여 사용 가능한 빈 항목을 찾음
 
 	//2. filesys_open 호출
-	struct file *file = filesys_open(name);
+	//struct file *file = filesys_open(name);
 	
-	//예외 처리
-	check_address(file);
+	
 
 	//3. 파일 디스크립터 테이블 빈 곳에 저장
 
@@ -157,5 +156,27 @@ sys_open(const char *name){
 
 	//5. fd struct 생성 및 fd table에 삽입 -> ?
 	//새로 만들었으니까 만들어주라는 건가(?)
+
+	//1. filename이 NULL이거나 사용자 메모리 범위(0x8048000 ~ 0xC0000000) 밖인지 확인 - 유효하지 않으면 exit(-1)
+	//예외 처리
+	check_address(name);
+
+    //2. filename이 빈 문자열("")인지 확인 - 빈 문자열이면 return -1
+	if (name[0] == '\0'){
+		return -1;
+	}
+
+    //3. filesys_open(filename)으로 파일 열기 - 실패 시 return -1
+	struct file *file = filesys_open(name);
+	if (file == NULL) {
+    	return -1;
+	}
+
+   	//4. running_file과 동일하면 file_deny_write 호출
+	
+    //5. fd_table->fd_next에서 fd 할당 (2 <= fd < 63) - 없으면 file_close 후 return -1
+    //6. fd_node[fd].type = FD_FILE, fd_node[fd].file = file
+    //7. fd_table->fd_next 증가
+    //8. return fd
 
 }
