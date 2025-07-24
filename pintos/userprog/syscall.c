@@ -119,6 +119,7 @@ write (int fd, const void *buffer, unsigned length) {
 	}
 }
 
+/* filesys_create를 호출하며 새로운 파일을 만듭니다. */
 bool 
 create(const char *file, unsigned initial_size) {
 	check_address(file);
