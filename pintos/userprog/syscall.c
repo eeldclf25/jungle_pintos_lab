@@ -65,6 +65,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_WAIT:
 			break;
 		case SYS_CREATE:
+			create(f-> R.rdi, f -> R.rsi);
 			break;
 		case SYS_REMOVE:
 			break;
