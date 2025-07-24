@@ -33,6 +33,12 @@ initd 및 기타 프로세스를 위한 일반 프로세스 초기화 함수입�
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+
+	current->fd = palloc_get_page (PAL_ZERO);
+	current->fd->fd_next = 2;
+	current->fd->fd_limit = FDCOUNT_LIMIT;
+	current->fd->fd_node[0]->type = FD_STDIN;
+	current->fd->fd_node[1]->type = FD_STDOUT;
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.

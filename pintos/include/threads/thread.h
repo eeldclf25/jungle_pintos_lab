@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "userprog/process.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,16 +28,6 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
-/* 파일 디스크립터 관련 */
-#define FDCOUNT_LIMIT 128
-
-/* 파일 디스크립터 테이블 구조체 */
-struct fd_table {
-	struct File *fd_address[64];
-	int fd_next;
-	int fd_limit;
-};
 
 /* A kernel thread or user process.
  *

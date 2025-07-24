@@ -233,12 +233,6 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
-	t->fd = palloc_get_page (PAL_ZERO);
-	t->fd->fd_next = 2;
-	t->fd->fd_limit = FDCOUNT_LIMIT;
-	t->fd->fd_address[0] = STDIN_FILENO;
-	t->fd->fd_address[1] = STDOUT_FILENO;
-
 	/* Add to run queue. */
 	thread_unblock (t);
 	thread_maybe_yield();	// 나보다 우선순위가 큰 스레드가 생성될 수 있으니까 체크
