@@ -100,6 +100,9 @@ struct thread {
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
 	struct fd_table *fd_table;
+	
+	// 실행 중인 파일에 대한 포인터
+	struct file *running_file;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

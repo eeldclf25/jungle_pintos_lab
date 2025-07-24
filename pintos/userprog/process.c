@@ -39,6 +39,7 @@ process_init (void) {
 	current->fd_table->fd_limit = FDCOUNT_LIMIT;
 	current->fd_table->fd_node[0].type = FD_STDIN;
 	current->fd_table->fd_node[1].type = FD_STDOUT;
+
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -203,6 +204,16 @@ int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
+
+	//실행 중인 파일 오픈
+	struct file *file = filesys_open(f_name);
+	if (file == NULL){
+		return -1;
+	}
+
+	//실행 중인 파일 저장
+	thread_current()->running_file = file;
+	file_deny_write(file);
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
