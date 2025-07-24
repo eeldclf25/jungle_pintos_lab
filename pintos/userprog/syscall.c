@@ -7,9 +7,13 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/synch.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+
+/* filesys_lock 전역 변수 선언 */
+struct lock filesys_lock;
 
 /* System call.
  *
@@ -156,10 +160,10 @@ sys_read(int fd, void *buffer, unsigned size) {
 				break;
 			}
 		}
-	} else { /* 락을 왜 걸어야하지 ? */
+	} else {
+		lock_acquire(&filesys_lock);
 		size = file_read(fd, buffer, size);
-
+		lock_release(&filesys_lock);
 	}
-
 	return size;
 }
