@@ -9,6 +9,7 @@
 #include "intrinsic.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "userprog/process.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -115,12 +116,12 @@ sys_write (int fd, const void *buffer, unsigned length) {
 	check_address (buffer);
 	struct thread *current = thread_current ();
 
-	if (current->fd->fd_node[fd]->type == FD_STDOUT) {
+	if (current->fd_table->fd_node[fd].type == FD_STDOUT) {
 		putbuf (buffer, length);
 		return length;
 	}
-	else if (current->fd->fd_node[fd]->type == FD_FILE) {
-		return file_write (current->fd->fd_node[fd]->file, buffer, length);
+	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
+		return file_write (current->fd_table->fd_node[fd].file, buffer, length);
 	}
 	else {
 		// file도 아닌 경우는 뭘 반환해야지?

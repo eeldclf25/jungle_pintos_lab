@@ -4,6 +4,7 @@
 #include "threads/thread.h"
 
 /* 파일 디스크립터 관련 */
+#define FDCOUNT_START 2
 #define FDCOUNT_LIMIT 63
 
 /* 파일 디스크립터의 타입을 저장하기 위한 enum */
@@ -17,7 +18,7 @@ struct fd_node {
 
 /* 프로세스마다 파일 디스크립터를 관리하기 위한 구조체 */
 struct fd_table {
-	struct fd_node *fd_node[64];
+	struct fd_node fd_node[64];
 	int fd_next;
 	int fd_limit;
 };

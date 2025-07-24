@@ -34,11 +34,11 @@ static void
 process_init (void) {
 	struct thread *current = thread_current ();
 
-	current->fd = palloc_get_page (PAL_ZERO);
-	current->fd->fd_next = 2;
-	current->fd->fd_limit = FDCOUNT_LIMIT;
-	current->fd->fd_node[0]->type = FD_STDIN;
-	current->fd->fd_node[1]->type = FD_STDOUT;
+	current->fd_table = palloc_get_page (PAL_ZERO);
+	current->fd_table->fd_next = FDCOUNT_START;
+	current->fd_table->fd_limit = FDCOUNT_LIMIT;
+	current->fd_table->fd_node[0].type = FD_STDIN;
+	current->fd_table->fd_node[1].type = FD_STDOUT;
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
