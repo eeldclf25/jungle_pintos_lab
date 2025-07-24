@@ -116,3 +116,10 @@ write (int fd, const void *buffer, unsigned length) {
 	else {
 		// fd 구현 후 작업
 	}
+}
+
+bool 
+create(const char *file, unsigned initial_size) {
+	check_address(file);
+	filesys(file, initial_size);
+}
