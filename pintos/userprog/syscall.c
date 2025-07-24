@@ -53,6 +53,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	switch (f->R.rax)
 	{
 		case SYS_HALT:
+			halt();
 			break;
 		case SYS_EXIT:
 			exit (f->R.rdi);
@@ -83,7 +84,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_CLOSE:
 			break;
 		default:
-			printf ("system call!\n");
+			printf ("system call exiting\n");
 			thread_exit ();
 			break;
 	}
@@ -94,6 +95,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	유저 프로그램에서 OS를 멈출 수 있는 유일한 시스템 콜 이다. */
 void halt (void) {
 	power_off(); 
+}
 
 /* exit로 호출한 스레드를 종료하는 함수 */
 void
