@@ -133,23 +133,28 @@ sys_create (const char *file, unsigned initial_size) {
 	return filesys_create (file, initial_size);
 }
 
-/* 버퍼에 있는 파일의 byte사이즈를 읽고 읽을 수 있는 만큼의 byte를 반환한다.
-	읽을 수 없었다면 -1 반환하고, fd 가 0 이라면 input_getc()를 이용하여 키보드 입력을 읽는다. */
+/**
+ * @brief 버퍼에 있는 파일의 byte사이즈를 읽고 읽을 수 있는 만큼의 byte를 반환한다.
+ * 읽을 수 없었다면 -1 반환하고, fd 가 0 이라면 input_getc()를 이용하여 키보드 입력을 읽는다.
+ * @param fd 
+ * @param buffer
+ * @param size
+ * @return size
+ */
 int 
 sys_read(int fd, void *buffer, unsigned size) {
 	
 	check_address(buffer);
 	int bytes = 0;
 	char *next = buffer;
-
-	/* 현재 파일이 비어있거나, */
 	struct file *current_file = thread_current() -> fd -> fd_address[fd];
 
+	/* 예외 처리 : 버퍼가 비어있는 경우, 파일이 비어있는 경우, fd가 1인 경우 (stdout)*/
 	if (buffer == NULL | current_file == NULL | fd == 1) {
 		return -1;
 	} 
 
-	/* fd 0 이라면 input_getc()를 이용하여 키보드 입력을 읽는다. */
+	/* fd 0 이라면 input_getc()를 이용하여 키보드 입력을 읽고, 아니라면 file_read()를 호출*/
 	if (fd == 0) {
 		char user_input;
 		for (int i = 0; i < size; i ++) {
