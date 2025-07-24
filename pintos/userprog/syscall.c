@@ -74,9 +74,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_FILESIZE:
 			break;
 		case SYS_READ:
+			sys_read (f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:
-			f->R.rax = sys_write (f->R.rdi, f->R.rsi, f->R.rdx);
+			sys_write (f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_SEEK:
 			break;
@@ -126,4 +127,39 @@ bool
 sys_create (const char *file, unsigned initial_size) {
 	check_address (file);
 	return filesys_create (file, initial_size);
+}
+
+/* 버퍼에 있는 파일의 byte사이즈를 읽고 읽을 수 있는 만큼의 byte를 반환한다.
+	읽을 수 없었다면 -1 반환하고, fd 가 0 이라면 input_getc()를 이용하여 키보드 입력을 읽는다. */
+int 
+sys_read(int fd, void *buffer, unsigned size) {
+	
+	check_address(buffer);
+	int bytes = 0;
+	char *next = buffer;
+
+	/* 현재 파일이 비어있거나, */
+	struct file *current_file = thread_current() -> fd -> fd_address[fd];
+
+	if (buffer == NULL | current_file == NULL | fd == 1) {
+		return -1;
+	} 
+
+	/* fd 0 이라면 input_getc()를 이용하여 키보드 입력을 읽는다. */
+	if (fd == 0) {
+		char user_input;
+		for (int i = 0; i < size; i ++) {
+			user_input = input_getc();
+			*next++ = user_input;
+
+			if (user_input == '\0') {
+				break;
+			}
+		}
+	} else { /* 락을 왜 걸어야하지 ? */
+		size = file_read(fd, buffer, size);
+
+	}
+
+	return size;
 }
