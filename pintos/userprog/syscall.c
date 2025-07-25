@@ -68,15 +68,18 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_WAIT:
 			break;
 		case SYS_CREATE:
-			sys_create (f-> R.rdi, f -> R.rsi);
+			f->R.rax = sys_create (f-> R.rdi, f -> R.rsi);
 			break;
 		case SYS_REMOVE:
 			break;
 		case SYS_OPEN:
+			f->R.rax = sys_open (f->R.rdi);
 			break;
 		case SYS_FILESIZE:
+			f->R.rax = sys_filesize (f->R.rdi);
 			break;
 		case SYS_READ:
+			f->R.rax = sys_read (f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:
 			f->R.rax = sys_write (f->R.rdi, f->R.rsi, f->R.rdx);
@@ -86,13 +89,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_TELL:
 			break;
 		case SYS_CLOSE:
+			sys_close(f->R.rdi);
 			break;
 		default:
 			printf ("system call exiting\n");
 			thread_exit ();
 			break;
 	}
-
 }
 
 /* power_off()를 호출하며 PintOS를 종료시킨다.
@@ -109,29 +112,37 @@ sys_exit (int status) {
 	thread_exit ();
 }
 
-/* 해당 fd에 write 하는 함수
-	아직 fd 구조를 안만들었지만, 일단 출력만 가능하게 구현. 이후 추가적인 구현 필요 */
-int
-sys_write (int fd, const void *buffer, unsigned length) {
-	check_address (buffer);
-	struct thread *current = thread_current ();
-
-	if (current->fd_table->fd_node[fd].type == FD_STDOUT) {
-		putbuf (buffer, length);
-		return length;
-	}
-	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
-		return file_write (current->fd_table->fd_node[fd].file, buffer, length);
-	}
-	else {
-		// file도 아닌 경우는 뭘 반환해야지?
-		sys_exit (-1);
-	}
-}
-
 /* filesys_create를 호출하며 새로운 파일을 만듭니다. */
 bool
 sys_create (const char *file, unsigned initial_size) {
 	check_address (file);
 	return filesys_create (file, initial_size);
+}
+
+int
+sys_open (const char *file) {
+	check_address (file);
+	return process_file_open (file);
+}
+
+int
+sys_filesize (int fd) {
+	return process_file_length (fd);
+}
+
+int
+sys_read (int fd, const void *buffer, unsigned size) {
+	check_address (buffer);
+	return process_file_read (fd, buffer, size);
+}
+
+int
+sys_write (int fd, const void *buffer, unsigned size) {
+	check_address (buffer);
+	return process_file_write (fd, buffer, size);
+}
+
+void 
+sys_close (int fd){
+	process_file_close (fd);
 }
