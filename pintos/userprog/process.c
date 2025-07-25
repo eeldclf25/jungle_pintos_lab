@@ -35,10 +35,91 @@ process_init (void) {
 	struct thread *current = thread_current ();
 
 	current->fd_table = palloc_get_page (PAL_ZERO);
-	current->fd_table->fd_next = FDCOUNT_START;
-	current->fd_table->fd_limit = FDCOUNT_LIMIT;
 	current->fd_table->fd_node[0].type = FD_STDIN;
 	current->fd_table->fd_node[1].type = FD_STDOUT;
+}
+
+int
+process_file_open (const char *file_name) {
+	struct thread *current = thread_current ();
+	struct file *open_file;
+	int return_fd = -1;
+
+	for (int i = 0; i < sizeof (current->fd_table->fd_node); i++) {
+		if (current->fd_table->fd_node[i].type == FD_NONE) {
+			if ((open_file = filesys_open (file_name)) != NULL) {
+				current->fd_table->fd_node[i].file = open_file;
+				current->fd_table->fd_node[i].type = FD_FILE;
+				return_fd = i;
+			}
+			break;
+		}
+	}
+
+	return return_fd;
+}
+
+int
+process_file_length (int fd) {
+	struct thread *current = thread_current ();
+
+	if (fd < 0 || sizeof (current->fd_table->fd_node) <= fd) {
+		return -1;
+	}
+	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
+		return file_length (current->fd_table->fd_node[fd].file);
+	}
+	else {
+		return -1;
+	}
+}
+
+int
+process_file_read (int fd, const void *buffer, unsigned size) {
+	struct thread *current = thread_current ();
+	
+	if (fd < 0 || sizeof (current->fd_table->fd_node) <= fd) {
+		return -1;
+	}
+	else if (current->fd_table->fd_node[fd].type == FD_STDIN) {
+		return input_getc ();
+	}
+	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
+		return file_read (current->fd_table->fd_node[fd].file, buffer, size);
+	}
+	else {
+		return -1;
+	}
+}
+
+int
+process_file_write (int fd, const void *buffer, unsigned size) {
+	struct thread *current = thread_current ();
+	
+	if (fd < 0 || sizeof (current->fd_table->fd_node) <= fd) {
+		return -1;
+	}
+	else if (current->fd_table->fd_node[fd].type == FD_STDOUT) {
+		putbuf (buffer, size);
+		return size;
+	}
+	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
+		return file_write (current->fd_table->fd_node[fd].file, buffer, size);
+	}
+	else {
+		return -1;
+	}
+}
+
+void
+process_file_close (int fd) {
+	struct thread *current = thread_current ();
+
+	if (fd < sizeof (current->fd_table->fd_node) && current->fd_table->fd_node[fd].type == FD_FILE) {
+		file_close (current->fd_table->fd_node[fd].file);
+		current->fd_table->fd_node[fd].type = FD_NONE;
+		current->fd_table->fd_node[fd].file = NULL;
+	}
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
