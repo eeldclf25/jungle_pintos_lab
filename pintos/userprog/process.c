@@ -19,6 +19,7 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "devices/timer.h"
+#include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -28,97 +29,141 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+/* process의 fd_table을 초기화 하는 함수
+	fd_node를 이중포인터로 사용하여 동적배열로 동작하게 하였으며,
+	때문에 fd_node를 처음 calloc으로 포인터 배열을 원하는 인덱스만큼 할당해줘야 함
+	이후 fd_node를 생성할때도 할당해준 포인터를 저장해야 함*/
+static void
+process_fd_init (void) {
+	struct thread *current = thread_current ();
+
+	current->fd_table.fd_limit = FD_LIMIT;
+	current->fd_table.fd_next = FD_NEXT;
+
+	current->fd_table.fd_node = calloc (current->fd_table.fd_limit, sizeof *current->fd_table.fd_node);
+	if (current->fd_table.fd_node == NULL) PANIC("fd table calloc failed");
+	
+	current->fd_table.fd_node[0] = malloc (sizeof *current->fd_table.fd_node[0]);
+	current->fd_table.fd_node[1] = malloc (sizeof *current->fd_table.fd_node[1]);
+	if (current->fd_table.fd_node[0] == NULL || current->fd_table.fd_node[1] == NULL) PANIC("std fd node calloc failed");
+
+	current->fd_table.fd_node[0]->type = FD_STDIN;
+	current->fd_table.fd_node[0]->file = NULL;
+	current->fd_table.fd_node[1]->type = FD_STDOUT;
+	current->fd_table.fd_node[1]->file = NULL;
+}
+
+/* fd_table에서 비어있는 fd를 가져오는 함수 
+	next_fit으로 동작하게 하였으며, fd_table이 꽉 찰 경우 -1 반환 */
+static int
+process_get_emptyfd (void) {
+	struct thread *current = thread_current ();
+	int empty_fd = current->fd_table.fd_next;
+
+	do {
+		if (current->fd_table.fd_node[empty_fd] == NULL) {
+			current->fd_table.fd_next = empty_fd;
+			return empty_fd;
+		}
+		else
+			empty_fd = (empty_fd == current->fd_table.fd_limit) ? 0 : ++empty_fd;
+	}	while (empty_fd != current->fd_table.fd_next);
+
+	return -1;
+}
+
+/* 해당 fd에 들어있는 fd_node를 반환하는 함수
+	만약 아무 할당을 안해줬을 경우 NULL을 반환 */
+static struct fd_node*
+process_check_fd (int check_fd) {
+	struct thread *current = thread_current ();
+	if (0 <= check_fd && check_fd < current->fd_table.fd_limit) {
+		if (current->fd_table.fd_node[check_fd] != NULL) {
+			return current->fd_table.fd_node[check_fd];
+		}
+	}
+	return NULL;
+}
+
 /* General process initializer for initd and other process. 
 initd 및 기타 프로세스를 위한 일반 프로세스 초기화 함수입니다.*/
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
 
-	current->fd_table = palloc_get_page (PAL_ZERO);
-	current->fd_table->fd_node[0].type = FD_STDIN;
-	current->fd_table->fd_node[1].type = FD_STDOUT;
+	process_fd_init ();
 }
 
+/* 매개변수로 들어온 문자열로 해당 파일을 오픈하는 함수
+	오픈이 가능한 경우, 오픈했던 fd 인덱스를 반환, 안되면 -1 반환 */
 int
 process_file_open (const char *file_name) {
 	struct thread *current = thread_current ();
 	struct file *open_file;
-	int return_fd = -1;
+	int return_fd;
 
-	for (int i = 0; i < sizeof (current->fd_table->fd_node); i++) {
-		if (current->fd_table->fd_node[i].type == FD_NONE) {
-			if ((open_file = filesys_open (file_name)) != NULL) {
-				current->fd_table->fd_node[i].file = open_file;
-				current->fd_table->fd_node[i].type = FD_FILE;
-				return_fd = i;
-			}
-			break;
-		}
+	if ((return_fd = process_get_emptyfd ()) != -1 && (open_file = filesys_open (file_name)) != NULL) {
+		current->fd_table.fd_node[return_fd] = malloc (sizeof *current->fd_table.fd_node[return_fd]);
+		current->fd_table.fd_node[return_fd]->file = open_file;
+		current->fd_table.fd_node[return_fd]->type = FD_FILE;
+		return return_fd;
 	}
-
-	return return_fd;
+	return -1;
 }
 
+/* 매개변수로 들어온 fd로 해당 파일을 size를 반환하는 함수
+	오픈이 가능한 경우, 오픈했던 fd 인덱스를 반환, 안되면 -1 반환 */
 int
 process_file_length (int fd) {
-	struct thread *current = thread_current ();
+	struct fd_node *node;
 
-	if (fd < 0 || sizeof (current->fd_table->fd_node) <= fd) {
-		return -1;
+	if ((node = process_check_fd (fd)) && node->type == FD_FILE) {
+		return file_length (node->file);
 	}
-	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
-		return file_length (current->fd_table->fd_node[fd].file);
-	}
-	else {
-		return -1;
-	}
+	return -1;
 }
 
+/* 매개변수로 들어온 fd로 해당 파일을 size 만큼 읽는 함수
+	가능한 읽은 만큼 buffer에 저장하고 읽은 size를 반환, 안되면 -1 반환 */
 int
 process_file_read (int fd, const void *buffer, unsigned size) {
-	struct thread *current = thread_current ();
-	
-	if (fd < 0 || sizeof (current->fd_table->fd_node) <= fd) {
-		return -1;
+	struct fd_node *node;
+
+	if (node = process_check_fd (fd)) {
+		if (node->type == FD_FILE)
+			return file_read (node->file, buffer, size);
+		else if (node->type == FD_STDIN)
+			return input_getc ();
 	}
-	else if (current->fd_table->fd_node[fd].type == FD_STDIN) {
-		return input_getc ();
-	}
-	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
-		return file_read (current->fd_table->fd_node[fd].file, buffer, size);
-	}
-	else {
-		return -1;
-	}
+	return -1;
 }
 
+/* 매개변수로 들어온 fd로 해당 파일을 size 만큼 작성하는 함수
+	buffer에 있는 문자열을 가능한 만큼 작성하고 작성한 size를 반환, 안되면 -1 반환 */
 int
 process_file_write (int fd, const void *buffer, unsigned size) {
-	struct thread *current = thread_current ();
-	
-	if (fd < 0 || sizeof (current->fd_table->fd_node) <= fd) {
-		return -1;
+	struct fd_node *node;
+
+	if (node = process_check_fd (fd)) {
+		if (node->type == FD_FILE)
+			return file_write (node->file, buffer, size);
+		else if (node->type == FD_STDOUT) {
+			putbuf (buffer, size);
+			return size;
+		}
 	}
-	else if (current->fd_table->fd_node[fd].type == FD_STDOUT) {
-		putbuf (buffer, size);
-		return size;
-	}
-	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
-		return file_write (current->fd_table->fd_node[fd].file, buffer, size);
-	}
-	else {
-		return -1;
-	}
+	return -1;
 }
 
+/* 매개변수로 들어온 fd에 파일이 있다면 close하는 함수 */
 void
 process_file_close (int fd) {
-	struct thread *current = thread_current ();
+	struct fd_node *node;
 
-	if (fd < sizeof (current->fd_table->fd_node) && current->fd_table->fd_node[fd].type == FD_FILE) {
-		file_close (current->fd_table->fd_node[fd].file);
-		current->fd_table->fd_node[fd].type = FD_NONE;
-		current->fd_table->fd_node[fd].file = NULL;
+	if ((node = process_check_fd (fd)) && node->type == FD_FILE) {
+		file_close (node->file);
+		node->type = FD_NONE;
+		node->file = NULL;
 	}
 }
 

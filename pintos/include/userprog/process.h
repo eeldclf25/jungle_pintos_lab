@@ -4,18 +4,16 @@
 #include "threads/thread.h"
 #include <hash.h>
 
+#define FD_NEXT 2
+#define FD_LIMIT 1024
+
 /* 파일 디스크립터의 타입을 저장하기 위한 enum */
 enum fd_type { FD_NONE, FD_STDIN, FD_STDOUT, FD_FILE };
 
 /* 파일 디스크립터의 단위가 되는 구조체 */
-struct fd_value {
+struct fd_node {
 	enum fd_type type;
 	struct file *file;
-};
-
-/* 프로세스마다 파일 디스크립터를 관리하기 위한 구조체 */
-struct fd_table {
-	struct fd_value fd_node[64];
 };
 
 int process_file_open (const char *file_name);
