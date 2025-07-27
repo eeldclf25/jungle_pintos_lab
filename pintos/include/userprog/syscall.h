@@ -13,5 +13,6 @@ int sys_filesize (int fd);
 int sys_read (int fd, const void *buffer, unsigned size);
 int sys_write (int fd, const void *buffer, unsigned size);
 void sys_close(int fd);
+pid_t sys_exec (const char *cmd_line);
 
 #endif /* userprog/syscall.h */

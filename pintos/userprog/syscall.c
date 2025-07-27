@@ -10,6 +10,8 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "userprog/process.h"
+#include <syscall.h>
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -64,6 +66,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_FORK:
 			break;
 		case SYS_EXEC:
+			f->R.rax = sys_exec(f->R.rdi);
 			break;
 		case SYS_WAIT:
 			break;
@@ -145,4 +148,33 @@ sys_write (int fd, const void *buffer, unsigned size) {
 void 
 sys_close (int fd){
 	process_file_close (fd);
+}
+
+pid_t 
+sys_exec (const char *cmd_line){
+
+	check_address(cmd_line);
+
+
+	process_execute(cmd_line);
+
+	//process_exec 함수 활용해서 자식 프로세스 생성
+	//process_execute();
+
+	//생성된 자식 프로세스의 PCB 검색
+
+	//자식 프로세스의  프로그램이 적재될 떄까지 대기
+
+	//프로그램 적재 실패 시 -1
+
+	//프로그램 적재 성공 시 자식 프로세스의 pid 리턴
+
+	/*
+	새로운 file을 palloc_get_page를 통해 주소를 할당한다.
+인자로 주어진 file_name 문자열을 strlcpy를 통해 새롭게 생성된 file 문자열에 복사한다.
+file을 실행한다. -> process_exec() 호출한다.
+process_exec()의 반환값이 -1이면 성공하지 못했다는 의미이므로 -1을 반환한다.
+	*/
+
+
 }
