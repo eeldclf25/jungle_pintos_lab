@@ -160,10 +160,10 @@ void
 process_file_close (int fd) {
 	struct fd_node *node;
 
-	if ((node = process_check_fd (fd)) && node->type == FD_FILE) {
+	if (node = process_check_fd (fd)) {
+		thread_current ()->fd_table.fd_node[fd] = NULL;
 		file_close (node->file);
-		node->type = FD_NONE;
-		node->file = NULL;
+		free (node);
 	}
 }
 
@@ -382,7 +382,7 @@ process_wait (tid_t child_tid UNUSED) {
 	 * XXX: process_wait를 구현하기 전에 이 부분에 무한 루프를 추가하는 것을 권장합니다. */
 
 	//  while(true){}
-	timer_sleep(400);
+	timer_sleep(200);
 	return -1;
 }
 
@@ -395,7 +395,6 @@ process_exit (void) {
 	for (int i = 0; i < curr->fd_table.fd_limit; i++) {
 		if (file_ptr = process_check_fd (i)) {
 			process_file_close (i);
-			free (file_ptr);
 		}
 	}
 	free (curr->fd_table.fd_node);
