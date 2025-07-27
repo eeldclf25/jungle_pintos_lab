@@ -390,10 +390,15 @@ process_wait (tid_t child_tid UNUSED) {
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
+	struct fd_node *file_ptr;
+
+	for (int i = 0; i < curr->fd_table.fd_limit; i++) {
+		if (file_ptr = process_check_fd (i)) {
+			process_file_close (i);
+			free (file_ptr);
+		}
+	}
+	free (curr->fd_table.fd_node);
 
 	process_cleanup ();
 }
