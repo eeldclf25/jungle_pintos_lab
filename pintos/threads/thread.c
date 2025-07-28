@@ -505,6 +505,15 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	/* process_wait*/
+	t -> wait_called = false;
+	t -> exit_status = -1;
+	
+	/* 세마포어 초기화를 해줘야 함 -> 안해주면 sema_down에서 영원히 락이 걸릴수 있음*/
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->exit_sema, 0);
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

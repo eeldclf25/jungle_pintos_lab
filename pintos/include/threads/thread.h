@@ -93,6 +93,16 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	/* process_ wait */
+	struct semaphore wait_sema;
+	struct semaphore exit_sema;
+	struct list child_list;      /* fork()로 만든 자식들을 모아두는 리스트 */
+	struct list_elem child_elem; /* child_list에 끼울 리스트 엘렘 */
+	struct thread *parent;   
+	
+	bool wait_called;
+	int exit_status;
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 

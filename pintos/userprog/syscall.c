@@ -66,6 +66,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_EXEC:
 			break;
 		case SYS_WAIT:
+			f->R.rax = sys_wait (f-> R.rdi);
 			break;
 		case SYS_CREATE:
 			f->R.rax = sys_create (f-> R.rdi, f -> R.rsi);
@@ -145,4 +146,9 @@ sys_write (int fd, const void *buffer, unsigned size) {
 void 
 sys_close (int fd){
 	process_file_close (fd);
+}
+
+void 
+sys_wait(tid_t pid) {
+	process_wait(pid);
 }

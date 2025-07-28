@@ -309,6 +309,22 @@ process_exec (void *f_name) {
 	NOT_REACHED ();
 }
 
+// 자식 리스트에서 원하는 프로세스를 검색하는 함수
+struct thread *process_get_child (int pid)
+{
+    struct thread *cur = thread_current(); // 현재 스레드를 가져옵니다.
+    struct list *child_list = &cur->elem; // 자식 스레드들을 저장하는 리스트를 가져옵니다.
+
+    // 자식 리스트를 순회하며 원하는 PID를 가진 자식 스레드를 검색합니다.
+    for (struct list_elem *element = list_begin(child_list); element != list_end(child_list); element = list_next(element))
+    {
+        struct thread *t = list_entry(element, struct thread, elem);
+        if (t->tid == pid) // 자식 스레드의 TID가 찾고자 하는 PID와 일치하는 경우
+            return t; // 해당 자식 스레드를 반환합니다.
+    }
+
+    return NULL; // 자식 스레드를 찾지 못한 경우 NULL을 반환합니다.
+}
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -329,16 +345,31 @@ TID가 유효하지 않거나, 호출한 프로세스의 자식이 아니거나,
 현재는 아무 동작도 하지 않습니다.*/
 int
 process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
+	int exit_status = -1;
 
-	 /* XXX: 힌트) PintOS는 process_wait(initd)가 호출되면 종료됩니다.
-	 * XXX: process_wait를 구현하기 전에 이 부분에 무한 루프를 추가하는 것을 권장합니다. */
+	struct thread *cur = thread_current();
+	struct thread *child = process_get_child(child_tid);
 
-	//  while(true){}
-	timer_sleep(400);
-	return -1;
+	/* pid가 직접 자식이 아닌경우 || 이미 wait을 호출한적 있는 경우 || exit을 호출 하지 않고 커널에 의해 종료되었다면 -1 반환*/
+	if (child == NULL || child->wait_called) {
+		 return exit_status;
+	}
+	
+    child->wait_called = true;
+
+	/* pid에 해당하는 자식 프로세스가 살아있다면 종료 될때까지 기다린다 -> 자식이 exit할때까지 블락 */
+	sema_down(&child->wait_sema);
+
+	// 자식 스레드를 자식 리스트에서 제거
+    list_remove(&child->child_elem); 
+
+	exit_status = child -> exit_status;
+
+	/* 자식 블락을 풀어준다 */
+    sema_up(&child->exit_sema); 
+
+	/* exit status 반환*/
+	return exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
