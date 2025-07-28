@@ -148,7 +148,7 @@ sys_close (int fd){
 	process_file_close (fd);
 }
 
-void 
+int 
 sys_wait(tid_t pid) {
 	process_wait(pid);
 }
