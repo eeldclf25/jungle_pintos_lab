@@ -18,12 +18,13 @@ struct fd_node {
 
 int process_file_open (const char *file_name);
 int process_file_length (int fd);
-int process_file_read (int fd, const void *buffer, unsigned size);
+int process_file_read (int fd, void *buffer, unsigned size);
 int process_file_write (int fd, const void *buffer, unsigned size);
+void process_file_seek (int fd, unsigned position);
 void process_file_close (int fd);
 tid_t process_create_initd (const char *file_name);
 tid_t process_fork (const char *name, struct intr_frame *if_);
-int process_exec_ready (const char *cmd_line);
+int process_exec_initd (const char *cmd_line);
 int process_exec (void *f_name);
 int process_wait (tid_t);
 void process_exit (void);

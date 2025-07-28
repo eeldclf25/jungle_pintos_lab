@@ -234,7 +234,7 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
-	struct cheild_state *t_state = malloc (sizeof (struct cheild_state));
+	struct child_state *t_state = malloc (sizeof (struct child_state));
 	t_state->cheild_tid = t->tid;
 	t_state->is_dying = false;
 	t_state->cheild_ptr = t;

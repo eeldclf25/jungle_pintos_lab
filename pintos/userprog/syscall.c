@@ -73,6 +73,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = sys_create (f->R.rdi, f ->R.rsi);
 			break;
 		case SYS_REMOVE:
+			f->R.rax = sys_remove (f->R.rdi);
 			break;
 		case SYS_OPEN:
 			f->R.rax = sys_open (f->R.rdi);
@@ -87,8 +88,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			f->R.rax = sys_write (f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_SEEK:
+			sys_seek (f->R.rdi, f->R.rsi);
 			break;
 		case SYS_TELL:
+			int a = 0;
 			break;
 		case SYS_CLOSE:
 			sys_close(f->R.rdi);
@@ -100,29 +103,15 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	}
 }
 
-/* power_off()를 호출하며 PintOS를 종료시킨다.
-	유저 프로그램에서 OS를 멈출 수 있는 유일한 시스템 콜 이다. */
 void
 sys_halt (void) {
 	power_off (); 
 }
 
-/* exit로 호출한 스레드를 종료하는 함수 */
 void
 sys_exit (int status) {
 	printf ("%s: exit(%d)\n", thread_name (), status);
-
-	/* 부모 프로세스에서 현재 프로세스의 list를 찾고 값을 업데이트 하고 exit */
-	struct thread *curr = thread_current ();
-	for (struct list_elem *elem = list_begin(&curr->process_parent->process_child_list); elem != list_end(&curr->process_parent->process_child_list); elem = list_next (elem)) {
-		struct cheild_state *child_elem = list_entry(elem, struct cheild_state, elem);
-
-		if (child_elem->cheild_ptr == curr) {
-			child_elem->is_dying = true;
-			child_elem->exit_state = status;
-		}
-	}
-
+	thread_current ()->exit_status = status;
 	thread_exit ();
 }
 
@@ -135,7 +124,8 @@ sys_fork (const char *thread_name, struct intr_frame *f) {
 int 
 sys_exec (const char *cmd_line){
 	check_address(cmd_line);
-	return process_exec_ready (cmd_line);
+	if (process_exec (cmd_line) < 0)
+		sys_exit (-1);
 }
 
 int
@@ -143,11 +133,16 @@ sys_wait (tid_t pid) {
 	return process_wait (pid);
 }
 
-/* filesys_create를 호출하며 새로운 파일을 만듭니다. */
 bool
 sys_create (const char *file, unsigned initial_size) {
 	check_address (file);
 	return filesys_create (file, initial_size);
+}
+
+bool
+sys_remove (const char *file) {
+	check_address (file);
+	return filesys_remove (file);
 }
 
 int
@@ -162,7 +157,7 @@ sys_filesize (int fd) {
 }
 
 int
-sys_read (int fd, const void *buffer, unsigned size) {
+sys_read (int fd, void *buffer, unsigned size) {
 	check_address (buffer);
 	return process_file_read (fd, buffer, size);
 }
@@ -171,6 +166,11 @@ int
 sys_write (int fd, const void *buffer, unsigned size) {
 	check_address (buffer);
 	return process_file_write (fd, buffer, size);
+}
+
+void
+sys_seek (int fd, unsigned position) {
+	process_file_seek (fd, position);
 }
 
 void 

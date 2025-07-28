@@ -36,7 +36,7 @@ struct fd_table {
 	struct fd_node **fd_node;
 };
 
-struct cheild_state {
+struct child_state {
 	tid_t cheild_tid;
 	bool is_dying;
 	int exit_state;
@@ -120,9 +120,11 @@ struct thread {
 	struct thread* process_parent;
 	struct semaphore process_current_state_sema;
 	struct list process_child_list;
-	
+
 	struct intr_frame fork_tf;
 	struct semaphore fork_sema;
+
+	int exit_status;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
