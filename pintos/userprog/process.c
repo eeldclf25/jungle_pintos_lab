@@ -39,10 +39,9 @@ process_fd_init (void) {
 
 	current->fd_table.fd_limit = FD_LIMIT;
 	current->fd_table.fd_next = FD_NEXT;
-
 	current->fd_table.fd_node = calloc (current->fd_table.fd_limit, sizeof *current->fd_table.fd_node);
 	if (current->fd_table.fd_node == NULL) PANIC("fd table calloc failed");
-	
+
 	current->fd_table.fd_node[0] = malloc (sizeof *current->fd_table.fd_node[0]);
 	current->fd_table.fd_node[1] = malloc (sizeof *current->fd_table.fd_node[1]);
 	if (current->fd_table.fd_node[0] == NULL || current->fd_table.fd_node[1] == NULL) PANIC("std fd node calloc failed");
@@ -51,6 +50,26 @@ process_fd_init (void) {
 	current->fd_table.fd_node[0]->file = NULL;
 	current->fd_table.fd_node[1]->type = FD_STDOUT;
 	current->fd_table.fd_node[1]->file = NULL;
+}
+
+/* ㅁㅁ */
+static void
+process_fd_duplicate (struct thread *origin) {
+	struct thread *current = thread_current ();
+
+	current->fd_table.fd_limit = FD_LIMIT;
+	current->fd_table.fd_next = FD_NEXT;
+	current->fd_table.fd_node = calloc (current->fd_table.fd_limit, sizeof *current->fd_table.fd_node);
+	if (current->fd_table.fd_node == NULL) PANIC("fd table calloc failed");
+
+	for (int i = 0; i < origin->fd_table.fd_limit; i++) {
+		if (origin->fd_table.fd_node[i] != NULL) {
+			current->fd_table.fd_node[i] = malloc (sizeof *current->fd_table.fd_node[i]);
+			if (origin->fd_table.fd_node[i]->file != NULL)
+				current->fd_table.fd_node[i]->file = file_duplicate (origin->fd_table.fd_node[i]->file);
+			current->fd_table.fd_node[i]->type = origin->fd_table.fd_node[i]->type;
+		}
+	}
 }
 
 /* fd_table에서 비어있는 fd를 가져오는 함수 
@@ -92,6 +111,14 @@ process_init (void) {
 	struct thread *current = thread_current ();
 
 	process_fd_init ();
+}
+
+/* 매개변수로 들어온 프로세스를 복제해서 초기화 하는 함수 */
+static void
+process_init_duplicate (struct thread *origin) {
+	struct thread *current = thread_current ();
+
+	process_fd_duplicate (origin);
 }
 
 /* 매개변수로 들어온 문자열로 해당 파일을 오픈하는 함수
@@ -223,9 +250,53 @@ initd (void *f_name) {
  * 스레드를 생성할 수 없으면 TID_ERROR를 반환합니다. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	struct thread *cur = thread_current ();
+	tid_t cheild;
+
+	memcpy (&cur->fork_tf, if_, sizeof (struct intr_frame));
+	if ((cheild = thread_create (name, PRI_DEFAULT, __do_fork, cur)) == TID_ERROR) {
+		return TID_ERROR;
+	}
+
+	// wait 함수랑 중복, 따로 함수로 뺼것
+	for (struct list_elem *elem = list_begin(&cur->process_child_list); elem != list_end(&cur->process_child_list); elem = list_next (elem)) {
+		struct cheild_state *child_elem = list_entry(elem, struct cheild_state, elem);
+
+		if (cheild == child_elem->cheild_tid) {
+			sema_down (&child_elem->cheild_ptr->fork_sema);
+		}
+	}
+
+	return cheild;
+}
+
+/* aa */
+int
+process_exec_ready (const char *cmd_line) {
+	struct thread *curr = thread_current ();
+	struct fd_node *file_ptr;
+
+	char *copy_line = palloc_get_page(0);
+	if (copy_line == NULL){
+		return -1;
+	}
+	
+	strlcpy (copy_line, cmd_line, PGSIZE);
+	
+
+	// /* 중복 코드 존재, 따로 함수로 뺼것 */
+	// for (int i = 0; i < curr->fd_table.fd_limit; i++) {
+	// 	if (file_ptr = process_check_fd (i)) {
+	// 		process_file_close (i);
+	// 	}
+	// }
+	// free (curr->fd_table.fd_node);
+
+	if (process_exec (copy_line) < 0) {
+		palloc_free_page(copy_line);
+		return -1;
+	}
+	NOT_REACHED ();
 }
 
 #ifndef VM
@@ -243,32 +314,31 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
 	/* 1. TODO: parent_page가 커널 페이지라면 즉시 반환합니다. */
+	if (is_kern_pte(pte)) return true;
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	/* 2. 부모의 pml4에서 VA를 해석합니다. */
-
-	parent_page = pml4_get_page (parent->pml4, va);
+	if ((parent_page = pml4_get_page (parent->pml4, va)) == NULL) return false;
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
 	/* 3. TODO: 자식 프로세스를 위해 PAL_USER 페이지를 새로 할당하고, 결과를 NEWPAGE에 저장합니다. */
-
+	if ((newpage = palloc_get_page (PAL_USER | PAL_ZERO)) == NULL) return false;
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
-	/* 4. TODO: 부모의 페이지를 새 페이지에 복제하고,
- *    TODO: 부모의 페이지가 쓰기 가능한지 확인하여 WRITABLE 값을 설정합니다. */
+	/* 4. TODO: 부모의 페이지를 새 페이지에 복제하고, 부모의 페이지가 쓰기 가능한지 확인하여 WRITABLE 값을 설정합니다. */
+	memcpy (newpage, parent_page, PGSIZE);
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	/* 5. WRITABLE 권한으로 자식의 페이지 테이블에 VA 주소에 새 페이지를 추가합니다. */
+	/* 6. TODO: if fail to insert page, do error handling. */
+	/* 6. TODO: 페이지 삽입에 실패하면 에러 처리를 합니다. */
+	if (pml4_set_page (current->pml4, va, newpage, writable) == false) return false;
 
-	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
-		/* 6. TODO: if fail to insert page, do error handling. */
-		/* 6. TODO: 페이지 삽입에 실패하면 에러 처리를 합니다. */
-
-	}
 	return true;
 }
 #endif
@@ -286,12 +356,12 @@ __do_fork (void *aux) {
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
-	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
+	struct intr_frame *parent_if = &parent->fork_tf;
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -313,10 +383,11 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-
-	process_init ();
+	// process_init ();
+	process_init_duplicate (parent);
 
 	/* Finally, switch to the newly created process. */
+	sema_up(&current->fork_sema);
 	if (succ)
 		do_iret (&if_);
 error:
@@ -370,19 +441,27 @@ process_exec (void *f_name) {
 TID가 유효하지 않거나, 호출한 프로세스의 자식이 아니거나, 
 해당 TID에 대해 process_wait()가 이미 성공적으로 호출된 적이 있다면, 
 기다리지 않고 즉시 -1을 반환합니다.
-이 함수는 문제 2-2에서 구현될 예정입니다. 
+이 함수는 문제 2-2에서 구현될 예정입니다.
 현재는 아무 동작도 하지 않습니다.*/
 int
 process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
+	struct thread *current = thread_current ();
 
-	 /* XXX: 힌트) PintOS는 process_wait(initd)가 호출되면 종료됩니다.
-	 * XXX: process_wait를 구현하기 전에 이 부분에 무한 루프를 추가하는 것을 권장합니다. */
+	for (struct list_elem *elem = list_begin(&current->process_child_list); elem != list_end(&current->process_child_list); elem = list_next (elem)) {
+		struct cheild_state *child_elem = list_entry(elem, struct cheild_state, elem);
 
-	//  while(true){}
-	timer_sleep(200);
+		if (child_tid == child_elem->cheild_tid) {
+			if (child_elem->is_dying == false) {
+				sema_down (&child_elem->cheild_ptr->process_current_state_sema);
+			}
+
+			int exit_state = child_elem->exit_state;
+			list_remove (elem);
+			free (child_elem);
+			return exit_state;
+		}
+	}
+
 	return -1;
 }
 
@@ -392,6 +471,7 @@ process_exit (void) {
 	struct thread *curr = thread_current ();
 	struct fd_node *file_ptr;
 
+	/* 현재 프로세스가 갖고있는 fd_table을 모두 닫고 할장 해제 */
 	for (int i = 0; i < curr->fd_table.fd_limit; i++) {
 		if (file_ptr = process_check_fd (i)) {
 			process_file_close (i);
@@ -399,7 +479,10 @@ process_exit (void) {
 	}
 	free (curr->fd_table.fd_node);
 
-	process_cleanup ();
+	/* exit 하면서 부모 스레드가 이 스레드가 끝날때까지 대기하기 위해 sema_down을 할 경우, sema_up을 실행 */
+	sema_up (&curr->process_current_state_sema);
+
+	process_cleanup ();	
 }
 
 /* Free the current process's resources. */

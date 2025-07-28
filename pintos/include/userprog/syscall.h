@@ -2,11 +2,15 @@
 #define USERPROG_SYSCALL_H
 
 #include <stdbool.h>
+#include "threads/thread.h"
 
 void syscall_init (void);
 
 void sys_halt (void);
 void sys_exit (int status);
+tid_t sys_fork (const char *thread_name, struct intr_frame *f);
+int sys_exec (const char *cmd_line);
+int sys_wait (tid_t pid);
 bool sys_create (const char *file, unsigned initial_size);
 int sys_open (const char *file);
 int sys_filesize (int fd);

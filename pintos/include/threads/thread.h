@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -33,6 +34,14 @@ struct fd_table {
 	int fd_next;
 	int fd_limit;
 	struct fd_node **fd_node;
+};
+
+struct cheild_state {
+	tid_t cheild_tid;
+	bool is_dying;
+	int exit_state;
+	struct thread *cheild_ptr;
+	struct list_elem elem;
 };
 
 /* A kernel thread or user process.
@@ -107,6 +116,13 @@ struct thread {
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
 	struct fd_table fd_table;
+
+	struct thread* process_parent;
+	struct semaphore process_current_state_sema;
+	struct list process_child_list;
+	
+	struct intr_frame fork_tf;
+	struct semaphore fork_sema;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

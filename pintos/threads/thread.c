@@ -10,6 +10,7 @@
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #include "intrinsic.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -233,6 +234,15 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	struct cheild_state *t_state = malloc (sizeof (struct cheild_state));
+	t_state->cheild_tid = t->tid;
+	t_state->is_dying = false;
+	t_state->cheild_ptr = t;
+
+	struct thread *cur = thread_current ();
+	list_push_back (&thread_current ()->process_child_list, &t_state->elem);
+	t->process_parent = thread_current ();
+	
 	/* Add to run queue. */
 	thread_unblock (t);
 	thread_maybe_yield();	// 나보다 우선순위가 큰 스레드가 생성될 수 있으니까 체크
@@ -361,7 +371,6 @@ thread_exit (void) {
 
 #ifdef USERPROG
 	process_exit ();
-	// pricess.c 안에서 모든 fd를 close 하고 이후에 palloc한거 제거하는거 구현
 #endif
 
 	/* Just set our status to dying and schedule another process.
@@ -505,6 +514,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	list_init (&t->process_child_list);
+	sema_init (&t->process_current_state_sema, 0);
+	sema_init (&t->fork_sema, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

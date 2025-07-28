@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
-#include "threads/thread.h"
 #include "threads/loader.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
@@ -62,13 +61,16 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			sys_exit (f->R.rdi);
 			break;
 		case SYS_FORK:
+			f->R.rax = sys_fork (f->R.rdi, f);
 			break;
 		case SYS_EXEC:
+			f->R.rax = sys_exec (f->R.rdi);
 			break;
 		case SYS_WAIT:
+			f->R.rax = sys_wait (f->R.rdi);
 			break;
 		case SYS_CREATE:
-			f->R.rax = sys_create (f-> R.rdi, f -> R.rsi);
+			f->R.rax = sys_create (f->R.rdi, f ->R.rsi);
 			break;
 		case SYS_REMOVE:
 			break;
@@ -109,7 +111,36 @@ sys_halt (void) {
 void
 sys_exit (int status) {
 	printf ("%s: exit(%d)\n", thread_name (), status);
+
+	/* 부모 프로세스에서 현재 프로세스의 list를 찾고 값을 업데이트 하고 exit */
+	struct thread *curr = thread_current ();
+	for (struct list_elem *elem = list_begin(&curr->process_parent->process_child_list); elem != list_end(&curr->process_parent->process_child_list); elem = list_next (elem)) {
+		struct cheild_state *child_elem = list_entry(elem, struct cheild_state, elem);
+
+		if (child_elem->cheild_ptr == curr) {
+			child_elem->is_dying = true;
+			child_elem->exit_state = status;
+		}
+	}
+
 	thread_exit ();
+}
+
+tid_t
+sys_fork (const char *thread_name, struct intr_frame *f) {
+	check_address (thread_name);
+	return process_fork (thread_name, f);
+}
+
+int 
+sys_exec (const char *cmd_line){
+	check_address(cmd_line);
+	return process_exec_ready (cmd_line);
+}
+
+int
+sys_wait (tid_t pid) {
+	return process_wait (pid);
 }
 
 /* filesys_create를 호출하며 새로운 파일을 만듭니다. */
