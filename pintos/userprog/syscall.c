@@ -146,3 +146,9 @@ void
 sys_close (int fd){
 	process_file_close (fd);
 }
+
+void 
+sys_seek (int fd, unsigned position) {
+	check_address (fd);
+	process_seek(fd, position);
+}

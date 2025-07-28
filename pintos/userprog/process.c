@@ -391,6 +391,15 @@ process_activate (struct thread *next) {
 	tss_update (next);
 }
 
+/* 파일 안에서 인자로 받는 position 으로 이동한다.*/
+void
+process_seek (int fd, unsigned position) {
+	if (fd < 2 || fd == NULL) {
+		return;
+	}
+	file_seek(fd, position);
+}
+
 /* We load ELF binaries.  The following definitions are taken
  * from the ELF specification, [ELF1], more-or-less verbatim.  */
 
