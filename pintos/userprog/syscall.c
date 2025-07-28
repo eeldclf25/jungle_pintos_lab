@@ -10,7 +10,10 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "userprog/process.h"
-#include <syscall.h>
+#include "userprog/syscall.h"
+#include "threads/palloc.h"
+#include <string.h>
+
 
 
 void syscall_entry (void);
@@ -150,31 +153,33 @@ sys_close (int fd){
 	process_file_close (fd);
 }
 
-pid_t 
+int 
 sys_exec (const char *cmd_line){
 
 	check_address(cmd_line);
 
+	//cmd_line 복사
+	//원본이 손상되면 안 되기 때문에
 
-	process_execute(cmd_line);
+	//+1은 마지막 널 문자('\0')까지 포함해서 복사하기 위함
+	int size = strlen(cmd_line) + 1;
 
-	//process_exec 함수 활용해서 자식 프로세스 생성
-	//process_execute();
+	//palloc_get_page 활용해서 공간 할당
+	char *copy_line = palloc_get_page(PAL_ZERO);
 
-	//생성된 자식 프로세스의 PCB 검색
+	//할당이 잘 되었는지 예외 처리
 
-	//자식 프로세스의  프로그램이 적재될 떄까지 대기
+	if (copy_line == NULL){
+		return -1;
+	}
 
-	//프로그램 적재 실패 시 -1
+	//memcpy는 메모리 복사 함수로, 길이 size만큼 cmd_line 내용을 cmd_copy에 그대로 복사함.
+	memcpy(copy_line, cmd_line, size);
 
-	//프로그램 적재 성공 시 자식 프로세스의 pid 리턴
-
-	/*
-	새로운 file을 palloc_get_page를 통해 주소를 할당한다.
-인자로 주어진 file_name 문자열을 strlcpy를 통해 새롭게 생성된 file 문자열에 복사한다.
-file을 실행한다. -> process_exec() 호출한다.
-process_exec()의 반환값이 -1이면 성공하지 못했다는 의미이므로 -1을 반환한다.
-	*/
-
+	//if (process_exec(cmd_copy) == -1) 제대로 작동하는지 체크
+	if (process_exec(copy_line) == -1){
+		palloc_free_page(copy_line);
+		return -1;
+	}
 
 }
