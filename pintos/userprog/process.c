@@ -211,6 +211,15 @@ process_file_seek (int fd, unsigned position) {
 		file_seek (node->file, position);
 }
 
+/* 열려진 파일 fd에서 읽히거나 써질 다음 바이트의 위치를 반환 */
+unsigned
+process_file_tell (int fd) {
+	struct fd_node *node;
+
+	if (node = process_check_fd (fd))
+		return file_tell (node->file);
+}
+
 /* 매개변수로 들어온 fd에 파일이 있다면 close하는 함수 */
 void
 process_file_close (int fd) {
@@ -369,10 +378,12 @@ __do_fork (void *aux) {
 #endif
 
 	/* fork니까 부모의 스레드를 복사 */
+	current->current_file = file_duplicate (parent->current_file);
+	file_deny_write (current->current_file);
 	process_duplicate (parent);
 
 	/* Finally, switch to the newly created process. */
-	sema_up(&current->fork_sema);
+	sema_up (&current->fork_sema);
 	if (succ)
 		do_iret (&if_);
 error:
@@ -480,6 +491,9 @@ process_exit (void) {
 		}
 	}
 	free (curr->fd_table.fd_node);
+
+	/* 프로세스 자체가 열고있는 파일 close */
+	file_close (curr->current_file);
 
 	/* exit 하면서 부모 스레드가 이 스레드가 끝날때까지 대기하기 위해 sema_down을 할 경우, sema_up을 실행 */
 	sema_up (&curr->process_current_state_sema);
@@ -614,6 +628,16 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	}
 
+	if (t->current_file == NULL) {
+		t->current_file = file;
+		file_deny_write (file);
+	}
+	else {
+		file_allow_write (t->current_file);
+		t->current_file = file;
+		file_deny_write (file);
+	}
+
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
@@ -726,7 +750,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	// file_close (file);
 	return success;
 }
 

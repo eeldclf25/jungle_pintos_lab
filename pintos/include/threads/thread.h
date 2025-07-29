@@ -117,6 +117,8 @@ struct thread {
 	uint64_t *pml4;                     /* Page map level 4 */
 	struct fd_table fd_table;
 
+	struct file *current_file;
+
 	struct thread* process_parent;
 	struct semaphore process_current_state_sema;
 	struct list process_child_list;
