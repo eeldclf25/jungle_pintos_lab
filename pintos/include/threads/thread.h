@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +28,21 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+/* 프로세스마다 파일 디스크립터를 관리하기 위한 구조체 */
+struct fd_table {
+	int fd_next;
+	int fd_limit;
+	struct fd_node **fd_node;
+};
+
+struct child_state {
+	tid_t cheild_tid;
+	bool is_dying;
+	int exit_state;
+	struct thread *cheild_ptr;
+	struct list_elem elem;
+};
 
 /* A kernel thread or user process.
  *
@@ -99,7 +115,16 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
-	struct fd_table *fd_table;
+	struct fd_table fd_table;
+
+	struct thread* process_parent;
+	struct semaphore process_current_state_sema;
+	struct list process_child_list;
+
+	struct intr_frame fork_tf;
+	struct semaphore fork_sema;
+
+	int exit_status;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

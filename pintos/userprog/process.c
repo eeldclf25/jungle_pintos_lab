@@ -19,6 +19,7 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "devices/timer.h"
+#include "threads/malloc.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -28,97 +29,197 @@ static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
 
+/* process의 fd_table을 초기화 하는 함수
+	fd_node를 이중포인터로 사용하여 동적배열로 동작하게 하였으며,
+	때문에 fd_node를 처음 calloc으로 포인터 배열을 원하는 인덱스만큼 할당해줘야 함
+	이후 fd_node를 생성할때도 할당해준 포인터를 저장해야 함*/
+static void
+process_fd_init (void) {
+	struct thread *current = thread_current ();
+
+	current->fd_table.fd_limit = FD_LIMIT;
+	current->fd_table.fd_next = FD_NEXT;
+	current->fd_table.fd_node = calloc (current->fd_table.fd_limit, sizeof *current->fd_table.fd_node);
+	if (current->fd_table.fd_node == NULL) PANIC("fd table calloc failed");
+
+	current->fd_table.fd_node[0] = malloc (sizeof *current->fd_table.fd_node[0]);
+	current->fd_table.fd_node[1] = malloc (sizeof *current->fd_table.fd_node[1]);
+	if (current->fd_table.fd_node[0] == NULL || current->fd_table.fd_node[1] == NULL) PANIC("std fd node malloc failed");
+
+	current->fd_table.fd_node[0]->type = FD_STDIN;
+	current->fd_table.fd_node[0]->file = NULL;
+	current->fd_table.fd_node[1]->type = FD_STDOUT;
+	current->fd_table.fd_node[1]->file = NULL;
+}
+
+/* process의 fd_table을 초기화 하는 함수
+	초기화를 하는데, 매겨변수로 들어온 스레드의 파일 디스크립터로 복사 */
+static void
+process_fd_duplicate (struct thread *origin) {
+	struct thread *current = thread_current ();
+
+	current->fd_table.fd_limit = FD_LIMIT;
+	current->fd_table.fd_next = FD_NEXT;
+	current->fd_table.fd_node = calloc (current->fd_table.fd_limit, sizeof *current->fd_table.fd_node);
+	if (current->fd_table.fd_node == NULL) PANIC("dup fd table calloc failed");
+
+	for (int i = 0; i < origin->fd_table.fd_limit; i++) {
+		if (origin->fd_table.fd_node[i] != NULL) {
+			current->fd_table.fd_node[i] = malloc (sizeof *current->fd_table.fd_node[i]);
+			if (current->fd_table.fd_node[i] == NULL) PANIC("dup std fd node malloc failed");
+
+			current->fd_table.fd_node[i]->type = origin->fd_table.fd_node[i]->type;
+			if (origin->fd_table.fd_node[i]->file != NULL)
+				current->fd_table.fd_node[i]->file = file_duplicate (origin->fd_table.fd_node[i]->file);
+			else
+				current->fd_table.fd_node[i]->file = NULL;
+		}
+	}
+}
+
+/* tid_t로 현재 프로세스에서 자식 프로세스가 있는지 찾는 함수
+	만약 없을 경우, NULL을 반환 */
+static struct child_state*
+process_get_child (tid_t child_tid) {
+	struct thread *current = thread_current ();
+
+	for (struct list_elem *elem = list_begin(&current->process_child_list); elem != list_end(&current->process_child_list); elem = list_next (elem)) {
+		if (child_tid == list_entry(elem, struct child_state, elem)->cheild_tid)
+			return list_entry(elem, struct child_state, elem);
+	}
+
+	return NULL;
+}
+
 /* General process initializer for initd and other process. 
 initd 및 기타 프로세스를 위한 일반 프로세스 초기화 함수입니다.*/
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
 
-	current->fd_table = palloc_get_page (PAL_ZERO);
-	current->fd_table->fd_node[0].type = FD_STDIN;
-	current->fd_table->fd_node[1].type = FD_STDOUT;
+	process_fd_init ();
 }
 
+/* 매개변수로 들어온 프로세스를 복제해서 초기화 하는 함수 */
+static void
+process_duplicate (struct thread *origin) {
+	struct thread *current = thread_current ();
+
+	process_fd_duplicate (origin);
+}
+
+/* fd_table에서 비어있는 fd를 가져오는 함수 
+	next_fit으로 동작하게 하였으며, fd_table이 꽉 찰 경우 -1 반환 */
+static int
+process_get_fd (void) {
+	struct thread *current = thread_current ();
+	int empty_fd = current->fd_table.fd_next;
+
+	do {
+		if (current->fd_table.fd_node[empty_fd] == NULL) {
+			current->fd_table.fd_next = empty_fd;
+			return empty_fd;
+		}
+		else
+			empty_fd = (empty_fd == current->fd_table.fd_limit) ? 0 : ++empty_fd;
+	}	while (empty_fd != current->fd_table.fd_next);
+
+	return -1;
+}
+
+/* 해당 fd에 들어있는 fd_node를 반환하는 함수
+	만약 아무 할당을 안해줬을 경우 NULL을 반환 */
+static struct fd_node*
+process_check_fd (int check_fd) {
+	struct thread *current = thread_current ();
+	if (0 <= check_fd && check_fd < current->fd_table.fd_limit) {
+		if (current->fd_table.fd_node[check_fd] != NULL) {
+			return current->fd_table.fd_node[check_fd];
+		}
+	}
+	return NULL;
+}
+
+/* 매개변수로 들어온 문자열로 해당 파일을 오픈하는 함수
+	오픈이 가능한 경우, 오픈했던 fd 인덱스를 반환, 안되면 -1 반환 */
 int
 process_file_open (const char *file_name) {
 	struct thread *current = thread_current ();
 	struct file *open_file;
-	int return_fd = -1;
+	int return_fd;
 
-	for (int i = 0; i < sizeof (current->fd_table->fd_node); i++) {
-		if (current->fd_table->fd_node[i].type == FD_NONE) {
-			if ((open_file = filesys_open (file_name)) != NULL) {
-				current->fd_table->fd_node[i].file = open_file;
-				current->fd_table->fd_node[i].type = FD_FILE;
-				return_fd = i;
-			}
-			break;
-		}
+	if ((return_fd = process_get_fd ()) != -1 && (open_file = filesys_open (file_name)) != NULL) {
+		current->fd_table.fd_node[return_fd] = malloc (sizeof *current->fd_table.fd_node[return_fd]);
+		if (current->fd_table.fd_node[return_fd] == NULL) PANIC("file open malloc failed");
+		current->fd_table.fd_node[return_fd]->file = open_file;
+		current->fd_table.fd_node[return_fd]->type = FD_FILE;
+		return return_fd;
 	}
-
-	return return_fd;
+	return -1;
 }
 
+/* 매개변수로 들어온 fd로 해당 파일을 size를 반환하는 함수
+	오픈이 가능한 경우, 오픈했던 fd 인덱스를 반환, 안되면 -1 반환 */
 int
 process_file_length (int fd) {
-	struct thread *current = thread_current ();
+	struct fd_node *node;
 
-	if (fd < 0 || sizeof (current->fd_table->fd_node) <= fd) {
-		return -1;
+	if ((node = process_check_fd (fd)) && node->type == FD_FILE) {
+		return file_length (node->file);
 	}
-	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
-		return file_length (current->fd_table->fd_node[fd].file);
-	}
-	else {
-		return -1;
-	}
+	return -1;
 }
 
+/* 매개변수로 들어온 fd로 해당 파일을 size 만큼 읽는 함수
+	가능한 읽은 만큼 buffer에 저장하고 읽은 size를 반환, 안되면 -1 반환 */
 int
-process_file_read (int fd, const void *buffer, unsigned size) {
-	struct thread *current = thread_current ();
-	
-	if (fd < 0 || sizeof (current->fd_table->fd_node) <= fd) {
-		return -1;
+process_file_read (int fd, void *buffer, unsigned size) {
+	struct fd_node *node;
+
+	if (node = process_check_fd (fd)) {
+		if (node->type == FD_FILE)
+			return file_read (node->file, buffer, size);
+		else if (node->type == FD_STDIN)
+			return input_getc ();
 	}
-	else if (current->fd_table->fd_node[fd].type == FD_STDIN) {
-		return input_getc ();
-	}
-	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
-		return file_read (current->fd_table->fd_node[fd].file, buffer, size);
-	}
-	else {
-		return -1;
-	}
+	return -1;
 }
 
+/* 매개변수로 들어온 fd로 해당 파일을 size 만큼 작성하는 함수
+	buffer에 있는 문자열을 가능한 만큼 작성하고 작성한 size를 반환, 안되면 -1 반환 */
 int
 process_file_write (int fd, const void *buffer, unsigned size) {
-	struct thread *current = thread_current ();
-	
-	if (fd < 0 || sizeof (current->fd_table->fd_node) <= fd) {
-		return -1;
+	struct fd_node *node;
+
+	if (node = process_check_fd (fd)) {
+		if (node->type == FD_FILE)
+			return file_write (node->file, buffer, size);
+		else if (node->type == FD_STDOUT) {
+			putbuf (buffer, size);
+			return size;
+		}
 	}
-	else if (current->fd_table->fd_node[fd].type == FD_STDOUT) {
-		putbuf (buffer, size);
-		return size;
-	}
-	else if (current->fd_table->fd_node[fd].type == FD_FILE) {
-		return file_write (current->fd_table->fd_node[fd].file, buffer, size);
-	}
-	else {
-		return -1;
-	}
+	return -1;
 }
 
+/* 현재 프로세스의 파일디스크립터에 해당 fd의 pos를 업데이트 하는 함수 */
+void
+process_file_seek (int fd, unsigned position) {
+	struct fd_node *node;
+
+	if (node = process_check_fd (fd))
+		file_seek (node->file, position);
+}
+
+/* 매개변수로 들어온 fd에 파일이 있다면 close하는 함수 */
 void
 process_file_close (int fd) {
-	struct thread *current = thread_current ();
+	struct fd_node *node;
 
-	if (fd < sizeof (current->fd_table->fd_node) && current->fd_table->fd_node[fd].type == FD_FILE) {
-		file_close (current->fd_table->fd_node[fd].file);
-		current->fd_table->fd_node[fd].type = FD_NONE;
-		current->fd_table->fd_node[fd].file = NULL;
+	if (node = process_check_fd (fd)) {
+		thread_current ()->fd_table.fd_node[fd] = NULL;
+		file_close (node->file);
+		free (node);
 	}
 }
 
@@ -133,6 +234,7 @@ process_file_close (int fd) {
  * 반드시 한 번만 호출해야 합니다. */
 tid_t
 process_create_initd (const char *file_name) {
+	char fname_buf[16];
 	char *fn_copy;
 	tid_t tid;
 
@@ -144,13 +246,10 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* 첫번째 인자가 파일 이름이니까 이것만 복사 */
-	char first_word[16];
-	size_t first_len = strcspn(fn_copy, " ");
-	strlcpy(first_word, fn_copy, first_len + 1);
-	first_word[first_len] = '\0';
+	strlcpy(fname_buf, file_name, (strcspn(file_name, " ") + 1));
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (first_word, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (fname_buf, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -158,7 +257,6 @@ process_create_initd (const char *file_name) {
 
 /* A thread function that launches first user process. */
 /* 첫 번째 사용자 프로세스를 실행하는 스레드 함수입니다. */
-
 static void
 initd (void *f_name) {
 #ifdef VM
@@ -178,9 +276,17 @@ initd (void *f_name) {
  * 스레드를 생성할 수 없으면 TID_ERROR를 반환합니다. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	struct thread *cur = thread_current ();
+	struct child_state *child;
+	tid_t child_tid;
+
+	memcpy (&cur->fork_tf, if_, sizeof (struct intr_frame));
+	if ((child_tid = thread_create (name, PRI_DEFAULT, __do_fork, cur)) != TID_ERROR)
+		sema_down (&process_get_child (child_tid)->cheild_ptr->fork_sema);
+	else
+		return TID_ERROR;
+
+	return child_tid;
 }
 
 #ifndef VM
@@ -198,32 +304,31 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
 	/* 1. TODO: parent_page가 커널 페이지라면 즉시 반환합니다. */
+	if (is_kern_pte(pte)) return true;
 
 	/* 2. Resolve VA from the parent's page map level 4. */
 	/* 2. 부모의 pml4에서 VA를 해석합니다. */
-
-	parent_page = pml4_get_page (parent->pml4, va);
+	if ((parent_page = pml4_get_page (parent->pml4, va)) == NULL) return false;
 
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
 	/* 3. TODO: 자식 프로세스를 위해 PAL_USER 페이지를 새로 할당하고, 결과를 NEWPAGE에 저장합니다. */
-
+	if ((newpage = palloc_get_page (PAL_USER | PAL_ZERO)) == NULL) return false;
 
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
-	/* 4. TODO: 부모의 페이지를 새 페이지에 복제하고,
- *    TODO: 부모의 페이지가 쓰기 가능한지 확인하여 WRITABLE 값을 설정합니다. */
+	/* 4. TODO: 부모의 페이지를 새 페이지에 복제하고, 부모의 페이지가 쓰기 가능한지 확인하여 WRITABLE 값을 설정합니다. */
+	memcpy (newpage, parent_page, PGSIZE);
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	/* 5. WRITABLE 권한으로 자식의 페이지 테이블에 VA 주소에 새 페이지를 추가합니다. */
+	/* 6. TODO: if fail to insert page, do error handling. */
+	/* 6. TODO: 페이지 삽입에 실패하면 에러 처리를 합니다. */
+	if (pml4_set_page (current->pml4, va, newpage, writable) == false) return false;
 
-	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
-		/* 6. TODO: if fail to insert page, do error handling. */
-		/* 6. TODO: 페이지 삽입에 실패하면 에러 처리를 합니다. */
-
-	}
 	return true;
 }
 #endif
@@ -241,12 +346,12 @@ __do_fork (void *aux) {
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
-	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
+	struct intr_frame *parent_if = &parent->fork_tf;
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
 	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -263,15 +368,11 @@ __do_fork (void *aux) {
 		goto error;
 #endif
 
-	/* TODO: Your code goes here.
-	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
-	 * TODO:       in include/filesys/file.h. Note that parent should not return
-	 * TODO:       from the fork() until this function successfully duplicates
-	 * TODO:       the resources of parent.*/
-
-	process_init ();
+	/* fork니까 부모의 스레드를 복사 */
+	process_duplicate (parent);
 
 	/* Finally, switch to the newly created process. */
+	sema_up(&current->fork_sema);
 	if (succ)
 		do_iret (&if_);
 error:
@@ -282,8 +383,15 @@ error:
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
-	char *file_name = f_name;
+	char *file_name;
 	bool success;
+
+	file_name = palloc_get_page(0);
+	if (file_name == NULL)
+		return -1;
+	strlcpy (file_name, f_name, PGSIZE);
+	if (is_kernel_vaddr (f_name))
+		palloc_free_page (f_name);
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -325,19 +433,27 @@ process_exec (void *f_name) {
 TID가 유효하지 않거나, 호출한 프로세스의 자식이 아니거나, 
 해당 TID에 대해 process_wait()가 이미 성공적으로 호출된 적이 있다면, 
 기다리지 않고 즉시 -1을 반환합니다.
-이 함수는 문제 2-2에서 구현될 예정입니다. 
+이 함수는 문제 2-2에서 구현될 예정입니다.
 현재는 아무 동작도 하지 않습니다.*/
 int
 process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
+	struct thread *current = thread_current ();
 
-	 /* XXX: 힌트) PintOS는 process_wait(initd)가 호출되면 종료됩니다.
-	 * XXX: process_wait를 구현하기 전에 이 부분에 무한 루프를 추가하는 것을 권장합니다. */
+	for (struct list_elem *elem = list_begin(&current->process_child_list); elem != list_end(&current->process_child_list); elem = list_next (elem)) {
+		struct child_state *child_elem = list_entry(elem, struct child_state, elem);
 
-	//  while(true){}
-	timer_sleep(400);
+		if (child_tid == child_elem->cheild_tid) {
+			if (child_elem->is_dying == false) {
+				sema_down (&child_elem->cheild_ptr->process_current_state_sema);
+			}
+
+			int exit_state = child_elem->exit_state;
+			list_remove (elem);
+			free (child_elem);
+			return exit_state;
+		}
+	}
+
 	return -1;
 }
 
@@ -345,12 +461,30 @@ process_wait (tid_t child_tid UNUSED) {
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
-	/* TODO: Your code goes here.
-	 * TODO: Implement process termination message (see
-	 * TODO: project2/process_termination.html).
-	 * TODO: We recommend you to implement process resource cleanup here. */
+	struct fd_node *file_ptr;
 
-	process_cleanup ();
+	/* 부모 프로세스에서 현재 프로세스의 list를 찾고 값을 업데이트 하고 exit */
+	for (struct list_elem *elem = list_begin(&curr->process_parent->process_child_list); elem != list_end(&curr->process_parent->process_child_list); elem = list_next (elem)) {
+		struct child_state *child_elem = list_entry(elem, struct child_state, elem);
+
+		if (child_elem->cheild_ptr == curr) {
+			child_elem->is_dying = true;
+			child_elem->exit_state = curr->exit_status;
+		}
+	}
+
+	/* 현재 프로세스가 갖고있는 fd_table을 모두 닫고 할장 해제 */
+	for (int i = 0; i < curr->fd_table.fd_limit; i++) {
+		if (file_ptr = process_check_fd (i)) {
+			process_file_close (i);
+		}
+	}
+	free (curr->fd_table.fd_node);
+
+	/* exit 하면서 부모 스레드가 이 스레드가 끝날때까지 대기하기 위해 sema_down을 할 경우, sema_up을 실행 */
+	sema_up (&curr->process_current_state_sema);
+
+	process_cleanup ();	
 }
 
 /* Free the current process's resources. */
@@ -457,11 +591,15 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 load (const char *file_name, struct intr_frame *if_) {
 	struct thread *t = thread_current ();
+	char fname_buf[16];
 	struct ELF ehdr;
 	struct file *file = NULL;
 	off_t file_ofs;
 	bool success = false;
 	int i;
+	
+	/* 인자 첫번째의 실행 파일 이름만 복사 */
+	strlcpy(fname_buf, file_name, (strcspn(file_name, " ") + 1));
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -470,9 +608,9 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
-	file = filesys_open (thread_name ());
+	file = filesys_open (fname_buf);
 	if (file == NULL) {
-		printf ("load: %s: open failed\n", thread_name ());
+		printf ("load: %s: open failed\n", fname_buf);
 		goto done;
 	}
 
@@ -484,7 +622,7 @@ load (const char *file_name, struct intr_frame *if_) {
 			|| ehdr.e_version != 1
 			|| ehdr.e_phentsize != sizeof (struct Phdr)
 			|| ehdr.e_phnum > 1024) {
-		printf ("load: %s: error loading executable\n", thread_name ());
+		printf ("load: %s: error loading executable\n", fname_buf);
 		goto done;
 	}
 
