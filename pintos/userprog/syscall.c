@@ -91,7 +91,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			sys_seek (f->R.rdi, f->R.rsi);
 			break;
 		case SYS_TELL:
-			int a = 0;
+			f->R.rax = sys_tell (f->R.rdi);
 			break;
 		case SYS_CLOSE:
 			sys_close(f->R.rdi);
@@ -171,6 +171,11 @@ sys_write (int fd, const void *buffer, unsigned size) {
 void
 sys_seek (int fd, unsigned position) {
 	process_file_seek (fd, position);
+}
+
+unsigned
+sys_tell (int fd) {
+	return process_file_tell (fd);
 }
 
 void 

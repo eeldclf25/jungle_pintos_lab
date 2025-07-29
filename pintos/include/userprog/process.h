@@ -21,6 +21,7 @@ int process_file_length (int fd);
 int process_file_read (int fd, void *buffer, unsigned size);
 int process_file_write (int fd, const void *buffer, unsigned size);
 void process_file_seek (int fd, unsigned position);
+unsigned process_file_tell (int fd);
 void process_file_close (int fd);
 tid_t process_create_initd (const char *file_name);
 tid_t process_fork (const char *name, struct intr_frame *if_);
