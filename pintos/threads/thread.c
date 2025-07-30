@@ -235,6 +235,8 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	struct child_state *t_state = malloc (sizeof (struct child_state));
+	if (t_state == NULL) PANIC("thread t_state malloc failed");
+
 	t_state->cheild_tid = t->tid;
 	t_state->is_dying = false;
 	t_state->cheild_ptr = t;
@@ -518,6 +520,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init (&t->process_child_list);
 	sema_init (&t->process_current_state_sema, 0);
 	sema_init (&t->fork_sema, 0);
+	t->exit_status = 0;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
