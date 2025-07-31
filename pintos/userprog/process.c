@@ -20,6 +20,7 @@
 #include "intrinsic.h"
 #include "devices/timer.h"
 #include "threads/malloc.h"
+#include "userprog/syscall.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -286,7 +287,6 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	struct thread *cur = thread_current ();
-	struct child_state *child;
 	tid_t child_tid;
 
 	memcpy (&cur->fork_tf, if_, sizeof (struct intr_frame));
@@ -294,7 +294,10 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 		sema_down (&process_get_child (child_tid)->cheild_ptr->fork_sema);
 	else
 		return TID_ERROR;
-
+	
+	if(process_get_child (child_tid)->exit_state == -1)
+		return TID_ERROR;
+	
 	return child_tid;
 }
 
@@ -336,7 +339,10 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	/* 5. WRITABLE 권한으로 자식의 페이지 테이블에 VA 주소에 새 페이지를 추가합니다. */
 	/* 6. TODO: if fail to insert page, do error handling. */
 	/* 6. TODO: 페이지 삽입에 실패하면 에러 처리를 합니다. */
-	if (pml4_set_page (current->pml4, va, newpage, writable) == false) return false;
+	if (pml4_set_page (current->pml4, va, newpage, writable) == false) {
+		palloc_free_page (newpage);
+		return false;
+	}
 
 	return true;
 }
@@ -383,11 +389,14 @@ __do_fork (void *aux) {
 	process_duplicate (parent);
 
 	/* Finally, switch to the newly created process. */
+	current->exit_status = 0;
 	sema_up (&current->fork_sema);
 	if (succ)
 		do_iret (&if_);
 error:
-	thread_exit ();
+	current->exit_status = -1;
+	sema_up (&current->fork_sema);
+	sys_exit (-1);
 }
 
 /* Switch the current execution context to the f_name.
@@ -455,7 +464,7 @@ process_wait (tid_t child_tid UNUSED) {
 
 		if (child_tid == child_elem->cheild_tid) {
 			if (child_elem->is_dying == false) {
-				sema_down (&child_elem->cheild_ptr->process_current_state_sema);
+				sema_down (&child_elem->cheild_ptr->exit_sema);
 			}
 
 			int exit_state = child_elem->exit_state;
@@ -495,8 +504,14 @@ process_exit (void) {
 	/* 프로세스 자체가 열고있는 파일 close */
 	file_close (curr->current_file);
 
+	for (struct list_elem *elem = list_begin(&curr->process_child_list); elem != list_end(&curr->process_child_list); elem = list_begin(&curr->process_child_list)) {
+		struct child_state *child_elem = list_entry(elem, struct child_state, elem);
+		list_remove (elem);
+		free (child_elem);
+	}
+
 	/* exit 하면서 부모 스레드가 이 스레드가 끝날때까지 대기하기 위해 sema_down을 할 경우, sema_up을 실행 */
-	sema_up (&curr->process_current_state_sema);
+	sema_up (&curr->exit_sema);
 
 	process_cleanup ();	
 }

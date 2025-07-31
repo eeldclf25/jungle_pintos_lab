@@ -120,11 +120,13 @@ struct thread {
 	struct file *current_file;
 
 	struct thread* process_parent;
-	struct semaphore process_current_state_sema;
 	struct list process_child_list;
-
+	
+	struct semaphore exit_sema;
+	
 	struct intr_frame fork_tf;
 	struct semaphore fork_sema;
+	bool fork_success;
 
 	int exit_status;
 #endif
