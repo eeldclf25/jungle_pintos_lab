@@ -517,10 +517,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	list_init (&t->process_child_list);
-	sema_init (&t->process_current_state_sema, 0);
-	sema_init (&t->fork_sema, 0);
 	t->exit_status = 0;
+	list_init (&t->process_child_list);
+	sema_init (&t->exit_sema, 0);
+	sema_init (&t->fork_sema, 0);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

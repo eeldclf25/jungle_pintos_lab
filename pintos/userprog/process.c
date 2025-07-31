@@ -290,16 +290,14 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	tid_t child_tid;
 
 	memcpy (&cur->fork_tf, if_, sizeof (struct intr_frame));
-	if ((child_tid = thread_create (name, PRI_DEFAULT, __do_fork, cur)) != TID_ERROR) {
+	if ((child_tid = thread_create (name, PRI_DEFAULT, __do_fork, cur)) != TID_ERROR)
 		sema_down (&process_get_child (child_tid)->cheild_ptr->fork_sema);
-
-		if(process_get_child (child_tid)->exit_state == -1)
-			return TID_ERROR;
-	}
-	else {
+	else
 		return TID_ERROR;
-	}
-
+	
+	if(process_get_child (child_tid)->exit_state == -1)
+		return TID_ERROR;
+	
 	return child_tid;
 }
 
@@ -391,13 +389,14 @@ __do_fork (void *aux) {
 	process_duplicate (parent);
 
 	/* Finally, switch to the newly created process. */
+	current->exit_status = 0;
 	sema_up (&current->fork_sema);
 	if (succ)
 		do_iret (&if_);
 error:
 	current->exit_status = -1;
 	sema_up (&current->fork_sema);
-	thread_exit ();
+	sys_exit (-1);
 }
 
 /* Switch the current execution context to the f_name.
@@ -465,7 +464,7 @@ process_wait (tid_t child_tid UNUSED) {
 
 		if (child_tid == child_elem->cheild_tid) {
 			if (child_elem->is_dying == false) {
-				sema_down (&child_elem->cheild_ptr->process_current_state_sema);
+				sema_down (&child_elem->cheild_ptr->exit_sema);
 			}
 
 			int exit_state = child_elem->exit_state;
@@ -487,15 +486,12 @@ process_exit (void) {
 	/* 부모 프로세스에서 현재 프로세스의 list를 찾고 값을 업데이트 하고 exit */
 	for (struct list_elem *elem = list_begin(&curr->process_parent->process_child_list); elem != list_end(&curr->process_parent->process_child_list); elem = list_next (elem)) {
 		struct child_state *child_elem = list_entry(elem, struct child_state, elem);
-		int a = curr->exit_status;
 
 		if (child_elem->cheild_ptr == curr) {
 			child_elem->is_dying = true;
 			child_elem->exit_state = curr->exit_status;
 		}
 	}
-
-
 
 	/* 현재 프로세스가 갖고있는 fd_table을 모두 닫고 할장 해제 */
 	for (int i = 0; i < curr->fd_table.fd_limit; i++) {
@@ -515,7 +511,7 @@ process_exit (void) {
 	}
 
 	/* exit 하면서 부모 스레드가 이 스레드가 끝날때까지 대기하기 위해 sema_down을 할 경우, sema_up을 실행 */
-	sema_up (&curr->process_current_state_sema);
+	sema_up (&curr->exit_sema);
 
 	process_cleanup ();	
 }
